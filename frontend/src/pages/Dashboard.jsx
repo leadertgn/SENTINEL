@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   BarChart, Bar, CartesianGrid, XAxis, YAxis,
@@ -61,10 +61,20 @@ const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
   )
 }
 
+// -------------------------------------------------------
+// ChartBox : résout le bug Recharts width=-1 dans CSS Grid
+// La hauteur est fixée en px, le chart occupe l'espace en absolu.
+// On n'affiche le chart qu'après le premier paint (isMounted)
+// pour que le navigateur ait calculé les dimensions CSS.
+// -------------------------------------------------------
 function ChartBox({ height = 240, children }) {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
   return (
     <div style={{ position: 'relative', width: '100%', height }}>
-      <div style={{ position: 'absolute', inset: 0 }}>{children}</div>
+      <div style={{ position: 'absolute', inset: 0 }}>
+        {mounted ? children : null}
+      </div>
     </div>
   )
 }
