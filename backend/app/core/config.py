@@ -3,6 +3,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///database.db"
     
+    # CORS — Restreindre en production
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    
     # Mode opérationnel
     SIMULATION_MODE: bool = True
 

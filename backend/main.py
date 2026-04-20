@@ -33,7 +33,8 @@ app = FastAPI(title="SENTINEL API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # En développement: localhost Vite. En production: changer ALLOWED_ORIGINS dans .env
+    allow_origins=settings.ALLOWED_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
