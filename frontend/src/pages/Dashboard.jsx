@@ -27,22 +27,55 @@ function Metric({ label, value, unit }) {
   )
 }
 
-function DeviceCard({ name, power, voltage_v, current_a, energy_kwh, power_factor, isMaster = false }) {
+function DeviceCard({ name, power, voltage_v, current_a, energy_kwh, power_factor, isMaster = false, isActive = true }) {
+  const isOff = !isMaster && !isActive
   return (
-    <div className={`relative overflow-hidden rounded-2xl p-5 border h-full
-      ${isMaster ? 'bg-gradient-to-br from-blue-950/60 to-slate-900 border-blue-800/40'
-                 : 'bg-slate-900/50 border-slate-800/50'}`}>
+    <div className={`relative overflow-hidden rounded-2xl p-5 border h-full transition-all duration-500
+      ${isMaster
+        ? 'bg-gradient-to-br from-blue-950/60 to-slate-900 border-blue-800/40'
+        : isOff
+          ? 'bg-slate-900/20 border-slate-800/30 opacity-70'
+          : 'bg-slate-900/50 border-slate-800/50'
+      }`}>
       {isMaster && <div className="absolute top-0 right-0 p-4 opacity-[0.07]"><Zap className="w-20 h-20 text-blue-400" /></div>}
-      <h3 className={`font-semibold text-sm mb-1 ${isMaster ? 'text-blue-400' : 'text-slate-400'}`}>{name}</h3>
+      
+      {/* En-tête : nom + badge état */}
+      <div className="flex items-start justify-between mb-1">
+        <h3 className={`font-semibold text-sm ${isMaster ? 'text-blue-400' : isOff ? 'text-slate-600' : 'text-slate-400'}`}>{name}</h3>
+        {!isMaster && (
+          <span className={`flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full
+            ${isActive
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+              : 'bg-slate-800/60 text-slate-500 border border-slate-700/30'
+            }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+            {isActive ? 'ON' : 'OFF'}
+          </span>
+        )}
+      </div>
+
+      {/* Puissance principale */}
       <div className="flex items-baseline gap-1 mb-4">
-        <span className={`text-3xl font-black tracking-tight ${isMaster ? 'text-white' : 'text-slate-200'}`}>{power ?? 0}</span>
+        <span className={`text-3xl font-black tracking-tight ${isMaster ? 'text-white' : isOff ? 'text-slate-600' : 'text-slate-200'}`}>
+          {power ?? 0}
+        </span>
         <span className="text-slate-500 font-semibold text-base">W</span>
       </div>
+
+      {/* Métriques PZEM */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-3">
         <Metric label="Tension"   value={voltage_v}    unit="V" />
         <Metric label="Courant"   value={current_a}    unit="A" />
         <Metric label="Cosφ (PF)" value={power_factor} unit="" />
-        <Metric label="Énergie"   value={energy_kwh}   unit="kWh" />
+        {/* L'énergie est cumulée (compteur PZEM) — elle ne se remet pas à 0 à l'extinction */}
+        <div className="flex flex-col">
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">
+            {isOff ? 'Cumul session' : 'Énergie'}
+          </span>
+          <span className={`font-mono font-bold text-sm ${isOff ? 'text-slate-600' : 'text-slate-200'}`}>
+            {energy_kwh ?? '—'} <span className="text-slate-500 text-xs">kWh</span>
+          </span>
+        </div>
       </div>
     </div>
   )
@@ -146,6 +179,7 @@ export default function Dashboard() {
                 current_a={node.current_a?.toFixed(3)}
                 energy_kwh={node.energy_kwh?.toFixed(3)}
                 power_factor={node.power_factor?.toFixed(2)}
+                isActive={node.is_active}
               />
             </div>
           ))}
