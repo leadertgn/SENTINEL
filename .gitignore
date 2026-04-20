@@ -9,6 +9,11 @@ desktop.ini
 *.swp
 *.swo
 
+# ── Bases de données ─────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
 # ── Éditeurs ─────────────────────────────────────────────────
 .vscode/
 .idea/
