@@ -1,0 +1,25 @@
+# ============================================================
+#  SENTINEL — .gitignore (Racine du Monorepo)
+# ============================================================
+
+# ── Système ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+
+# ── Éditeurs ─────────────────────────────────────────────────
+.vscode/
+.idea/
+*.code-workspace
+
+# ── Environnements & Secrets ─────────────────────────────────
+# NE JAMAIS VERSIONNER LES FICHIERS .env
+.env
+.env.*
+!.env.example
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/

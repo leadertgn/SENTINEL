@@ -1,0 +1,59 @@
+# ============================================================
+#  SENTINEL Backend — .gitignore (Python / FastAPI)
+# ============================================================
+
+# ── Environnement virtuel ─────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Fichiers de configuration sensibles ──────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Base de données locale ───────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.installed.cfg
+lib/
+lib64/
+
+# ── Type checking & Linting ──────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+
+# ── Tests ────────────────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# ── Alembic ──────────────────────────────────────────────────
+# Versionner les scripts de migration, PAS la DB
+# alembic/versions/ → à versionner
+# Rien à ignorer côté alembic sauf la DB ci-dessus
+
+# ── Jupyter (si utilisé pour l'analyse) ──────────────────────
+.ipynb_checkpoints/
+
+# ── IDE ──────────────────────────────────────────────────────
+.idea/
+.vscode/

@@ -1,0 +1,33 @@
+# ============================================================
+#  SENTINEL Firmware — .gitignore (C++ / PlatformIO / Arduino)
+# ============================================================
+
+# ── PlatformIO ────────────────────────────────────────────────
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# ── Build Arduino IDE ─────────────────────────────────────────
+build/
+*.bin
+*.elf
+*.hex
+*.map
+
+# ── Configuration sensible du firmware ───────────────────────
+# Ne pas versionner les fichiers de config contenant le secret
+secrets.h
+config_private.h
+credentials.h
+
+# ── Versionner le template de configuration ──────────────────
+# secrets.h.example → À VERSIONNER (sans les vrais secrets)
+
+# ── Librairies (gérées par PlatformIO) ───────────────────────
+lib/
+.libs/
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.code-workspace
