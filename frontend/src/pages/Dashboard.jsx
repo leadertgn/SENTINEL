@@ -95,17 +95,18 @@ const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
 }
 
 // -------------------------------------------------------
-// ChartBox : résout le bug Recharts width=-1 dans CSS Grid
-// La hauteur est fixée en px, le chart occupe l'espace en absolu.
-// On n'affiche le chart qu'après le premier paint (isMounted)
-// pour que le navigateur ait calculé les dimensions CSS.
+// ChartBox — Fix definitif bug Recharts width=-1
+// requestAnimationFrame garantit le rendu post-GPU-paint.
 // -------------------------------------------------------
 function ChartBox({ height = 240, children }) {
   const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(raf)
+  }, [])
   return (
     <div style={{ position: 'relative', width: '100%', height }}>
-      <div style={{ position: 'absolute', inset: 0 }}>
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
         {mounted ? children : null}
       </div>
     </div>
@@ -196,7 +197,7 @@ export default function Dashboard() {
           Dernières {liveHistory.length} mesures — mise à jour toutes les 2s
         </p>
         <ChartBox height={200}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" debounce={50}>
             <LineChart data={liveHistory} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
               <XAxis dataKey="time" stroke="#475569" fontSize={10} tickLine={false} interval="preserveStartEnd" />
@@ -224,7 +225,7 @@ export default function Dashboard() {
           <h3 className="text-white font-bold mb-0.5">Répartition de la Charge</h3>
           <p className="text-slate-500 text-xs mb-4">Audit différentiel en temps réel</p>
           <ChartBox height={240}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" debounce={50}>
               <PieChart>
                 <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90}
                   paddingAngle={4} dataKey="value" stroke="none"
@@ -259,7 +260,7 @@ export default function Dashboard() {
             {histLoading ? (
               <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">Chargement…</div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" debounce={50}>
                 <BarChart data={historyData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                   <XAxis dataKey="label" stroke="#475569" fontSize={10} tickLine={false} />
