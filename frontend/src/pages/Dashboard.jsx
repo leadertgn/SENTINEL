@@ -121,19 +121,19 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="p-4 bg-slate-900/40 border border-slate-800/50 rounded-2xl">
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Tension</p>
-              <p className="text-xl font-black text-white">{telemetry.master.voltage.toFixed(1)} <small className="text-xs text-slate-500">V</small></p>
+              <p className="text-xl font-black text-white">{(telemetry.master.voltage || 0).toFixed(1)} <small className="text-xs text-slate-500">V</small></p>
             </div>
             <div className="p-4 bg-slate-900/40 border border-slate-800/50 rounded-2xl">
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Courant</p>
-              <p className="text-xl font-black text-white">{telemetry.master.current.toFixed(2)} <small className="text-xs text-slate-500">A</small></p>
+              <p className="text-xl font-black text-white">{(telemetry.master.current || 0).toFixed(2)} <small className="text-xs text-slate-500">A</small></p>
             </div>
             <div className="p-4 bg-slate-900/40 border border-slate-800/50 rounded-2xl">
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Cos φ</p>
-              <p className="text-xl font-black text-white">{telemetry.master.pf.toFixed(2)}</p>
+              <p className="text-xl font-black text-white">{(telemetry.master.power_factor || 0).toFixed(2)}</p>
             </div>
             <div className="p-4 bg-slate-900/40 border border-slate-800/50 rounded-2xl">
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Fréquence</p>
-              <p className="text-xl font-black text-white">{telemetry.master.hz.toFixed(1)} <small className="text-xs text-slate-500">Hz</small></p>
+              <p className="text-xl font-black text-white">{(telemetry.master.frequency_hz || 0).toFixed(1)} <small className="text-xs text-slate-500">Hz</small></p>
             </div>
           </div>
 

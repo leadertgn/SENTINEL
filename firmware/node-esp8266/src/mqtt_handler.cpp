@@ -1,20 +1,19 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include "mqtt_handler.h"
 #include "config.h"
-#include "pzem_reader.h"
 
 static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
 static String s_mac;
 static bool s_relayState = false;
 
-// ─── MQTT Callback (Commandes entrantes) ─────────────────────────
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     JsonDocument doc;
     deserializeJson(doc, payload, length);
     
-    if (doc.containsKey("action")) {
+    if (doc["action"].is<const char*>()) {
         String action = doc["action"];
         if (action == "ON") {
             s_relayState = true;
@@ -24,9 +23,9 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
             digitalWrite(RELAY_PIN, RELAY_OFF);
         }
         
-        // Notification immédiate du changement d'état
         JsonDocument res;
         res["mac_address"] = s_mac;
+        res["secret_key"] = DEVICE_SECRET;
         res["is_active"] = s_relayState;
         res["state"] = "ONLINE";
         char buffer[128];
@@ -48,7 +47,9 @@ void mqtt_setup() {
 
 void mqtt_loop() {
     if (!mqttClient.connected()) {
+        Serial.printf("🔌 Tentative connexion MQTT Node (%s)...\n", s_mac.c_str());
         if (mqttClient.connect(s_mac.c_str())) {
+            Serial.println("✅ MQTT Connecté");
             mqttClient.subscribe(("sbee/devices/" + s_mac + "/cmd").c_str());
         } else {
             delay(5000);
@@ -74,5 +75,14 @@ void publish_telemetry(const SensorData& data) {
 
     char buffer[512];
     serializeJson(doc, buffer);
-    mqttClient.publish("sbee/devices/data", buffer);
+    
+    // CORRECTION DU TOPIC : Ajout du MAC pour matcher sbee/devices/+/data
+    String topic = "sbee/devices/" + s_mac + "/data";
+    bool ok = mqttClient.publish(topic.c_str(), buffer);
+    
+    if (ok) {
+        Serial.printf("📤 [MQTT] %s | P: %.1fW\n", topic.c_str(), data.power_w);
+    } else {
+        Serial.println("❌ Échec envoi MQTT");
+    }
 }

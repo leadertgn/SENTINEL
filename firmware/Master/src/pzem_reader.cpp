@@ -29,7 +29,7 @@ SensorData read_sensor() {
     s_lastReadMs = now;
 
     float sim_voltage = 220.0f + (float)random(-10, 11) / 10.0f;
-    float sim_power   = 200.0f + (float)random(0, 501); 
+    float sim_power   = 1800.0f + (float)random(0, 701); 
     float sim_pf      = 0.95f  + (float)random(-5, 5) / 100.0f;
     float sim_freq    = 50.0f  + (float)random(-5, 5) / 100.0f;
     

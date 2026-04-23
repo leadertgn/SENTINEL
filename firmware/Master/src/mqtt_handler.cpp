@@ -89,8 +89,8 @@ static void mqtt_connect() {
         if (connected) {
             Serial.println("✅ MQTT connecté !");
 
-            // Publication du statut ONLINE
-            String statusPayload = "{\"state\":\"ONLINE\",\"role\":\"MASTER\",\"mac\":\"" + s_deviceMac + "\"}";
+            // Publication du statut ONLINE (sécurisé)
+            String statusPayload = "{\"state\":\"ONLINE\",\"role\":\"MASTER\",\"mac_address\":\"" + s_deviceMac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
             mqttClient.publish(s_topicStatus.c_str(), statusPayload.c_str(), true);  // retain=true
 
             // Abonnement aux commandes (ignorées par le Master, mais on écoute quand même)

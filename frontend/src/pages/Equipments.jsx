@@ -74,7 +74,7 @@ export default function Equipments() {
                     <span className="text-xs text-slate-500 font-mono mt-1">{node.mac_address}</span>
                 </div>
                 <button 
-                    onClick={() => toggleMutation.mutate({ id: node.id, role: node.role })}
+                    onClick={() => toggleMutation.mutate({ id: node.mac_address, role: node.role })}
                     disabled={toggleMutation.isPending || isMaster}
                     className={`p-3 rounded-full transition-all duration-300 ${isMaster ? 'bg-slate-800 text-slate-600' : node.is_active ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
                 >
