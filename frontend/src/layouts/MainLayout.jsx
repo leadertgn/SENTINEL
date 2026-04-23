@@ -113,7 +113,6 @@ export default function MainLayout({ children, activeTab, setActiveTab }) {
               {activeTab === 'settings' && 'Configuration du système'}
             </p>
           </div>
-          <StatusBadge />
         </header>
 
         {/* CONTENU PAGE */}

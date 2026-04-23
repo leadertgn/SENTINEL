@@ -48,21 +48,18 @@ def _validate_and_register(session: Session, payload: dict) -> Device | None:
     return None
 
 def on_connect(client, userdata, flags, rc):
-    print(f"🌐 MQTT : Connecté au Broker (code {rc})")
     client.subscribe("sbee/devices/+/data")
     client.subscribe("sbee/devices/+/status")
 
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
-        
         with Session(engine) as session:
             device = _validate_and_register(session, payload)
             if not device: return
 
             if "/data" in msg.topic:
                 new_kwh = float(payload.get("energy_kwh", 0.0))
-                
                 last_telemetry = session.exec(
                     select(Telemetry).where(Telemetry.device_id == device.id).order_by(Telemetry.timestamp.desc())
                 ).first()
@@ -83,11 +80,8 @@ def on_message(client, userdata, msg):
                 session.add(device)
                 session.commit()
 
-                # On ne déclenche le broadcast que si c'est le MASTER qui publie
-                # Cela évite les snapshots redondants et définit le rythme de l'UI
                 if device.role == RoleEnum.MASTER:
                     _broadcast_unified_snapshot(session)
-
     except Exception as e:
         print(f"💥 MQTT Error: {e}")
 
@@ -100,38 +94,59 @@ def _broadcast_unified_snapshot(session: Session):
         last_m = session.exec(select(Telemetry).where(Telemetry.device_id == master.id).order_by(Telemetry.timestamp.desc())).first()
         if not last_m: return
 
+        # CALCUL DU COUT DYNAMIQUE
+        tariff = get_active_tariff(last_m.energy_kwh, session)
+        total_fcfa = calculate_monthly_cost(last_m.energy_kwh, session)
+
         nodes = session.exec(select(Device).where(Device.role == RoleEnum.NODE)).all()
         nodes_data = []
         total_p_nodes = 0
         for n in nodes:
             last_n = session.exec(select(Telemetry).where(Telemetry.device_id == n.id).order_by(Telemetry.timestamp.desc())).first()
             p = last_n.power_w if last_n else 0
-            nodes_data.append({"name": n.name, "mac": n.mac_address, "power": p, "is_active": n.is_active, "status": n.status})
+            nodes_data.append({
+                "name": n.name, 
+                "mac": n.mac_address, 
+                "role": n.role,
+                "power": p,
+                "voltage": last_n.voltage_v if last_n else 0,
+                "current": last_n.current_a if last_n else 0,
+                "kwh_total": last_n.energy_kwh if last_n else 0,
+                "power_factor": last_n.power_factor if last_n else 0,
+                "frequency_hz": last_n.frequency_hz if last_n else 0,
+                "energy_delta_wh": last_n.energy_delta_wh if last_n else 0,
+                "is_active": n.is_active, 
+                "status": n.status
+            })
             total_p_nodes += p
 
-        # Harmonisation du contrat avec le Frontend (clés explicites)
         snapshot = {
             "type": "TELEMETRY_UPDATE",
             "timestamp": last_m.timestamp.isoformat(),
             "master": {
+                "name": master.name,
+                "mac": master.mac_address,
+                "role": master.role,
+                "status": master.status,
                 "power": last_m.power_w,
                 "voltage": last_m.voltage_v,
                 "current": last_m.current_a,
                 "kwh_total": last_m.energy_kwh,
+                "energy_delta_wh": last_m.energy_delta_wh,
                 "power_factor": last_m.power_factor,
                 "frequency_hz": last_m.frequency_hz
             },
             "nodes": nodes_data,
             "audit": {"unknown_w": max(0, last_m.power_w - total_p_nodes)},
-            "billing": {"total_fcfa": 0, "active_tariff": "SBEE Normal", "price_per_kwh": 79}
+            "billing": {
+                "total_fcfa": int(total_fcfa), 
+                "active_tariff": tariff.name if tariff else "Standard", 
+                "price_per_kwh": tariff.price_per_kwh if tariff else 79
+            }
         }
 
         if _main_loop:
-            nb_clients = len(manager.active_connections)
             asyncio.run_coroutine_threadsafe(manager.broadcast(snapshot), _main_loop)
-            if nb_clients > 0:
-                print(f"🚀 Snapshot diffusé vers {nb_clients} client(s) (P_Master: {last_m.power_w}W)")
-
     except Exception as e:
         print(f"⚠️ Broadcast Error: {e}")
 
@@ -156,10 +171,8 @@ def start_mqtt_client():
     _mqtt_client = client
     client.on_connect = on_connect
     client.on_message = on_message
-    
     try:
         client.connect(settings.MQTT_BROKER, settings.MQTT_PORT, 60)
         threading.Thread(target=client.loop_forever, daemon=True).start()
-        print(f"🚀 MQTT : Client démarré sur {settings.MQTT_BROKER}")
     except Exception as e:
-        print(f"❌ MQTT : Erreur démarrage : {e}")
+        print(f"❌ MQTT : {e}")
