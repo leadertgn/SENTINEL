@@ -4,22 +4,14 @@ const WS_URL = `${import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000'}/api/tele
 const MAX_LIVE_POINTS = 30
 
 export const useTelemetryStore = create((set, get) => ({
+  // État initial conforme à la nouvelle vision
   telemetry: {
-    master_power: 0,
-    voltage: 220,
-    current: 0,
-    power_factor: 0.95,
-    frequency_hz: 50,
+    master: { power: 0, voltage: 0, current: 0, kwh_total: 0, pf: 0, hz: 0 },
     nodes: [],
-    unknown_power: 0,
-    total_kwh: 0,
-    billing: {
-      month_kwh: 0,
-      estimated_cost_fcfa: 0,
-      active_tariff: null,
-    },
+    audit: { unknown_w: 0, nodes_total_w: 0 },
+    billing: { total_fcfa: 0, active_tariff: "Attente...", price_per_kwh: 0 },
+    timestamp: null
   },
-  // Historique live (N derniers points WebSocket)
   liveHistory: [],
   isConnected: false,
 
@@ -42,7 +34,7 @@ export const useTelemetryStore = create((set, get) => ({
 
         const newPoint = {
           time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          power: payload.master_power,
+          power: payload.master?.power || 0,
         }
 
         set((state) => ({

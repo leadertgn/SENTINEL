@@ -21,8 +21,7 @@ async def lifespan(app: FastAPI):
     start_mqtt_client()
     if settings.SIMULATION_MODE:
         import logging
-        logging.getLogger("main").info("🔵 MODE SIMULATION activé — mock_hardware en cours")
-        asyncio.create_task(simulate_hardware_data())
+        logging.getLogger("main").info("🔵 MODE SIMULATION firmware attendu via MQTT")
     else:
         import logging
         logging.getLogger("main").info("🟢 MODE PRODUCTION — En attente des trames MQTT réelles")

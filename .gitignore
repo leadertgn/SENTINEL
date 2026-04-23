@@ -1,30 +1,13 @@
-# ============================================================
-#  SENTINEL — .gitignore (Racine du Monorepo)
-# ============================================================
+# Temporary AI Framing Files
+README_PROJET.md
+README_BACKEND.md
+README_FRONTEND.md
+README_MASTER.md
+README_NODE.md
 
-# ── Système ──────────────────────────────────────────────────
+# System files
 .DS_Store
 Thumbs.db
-desktop.ini
-*.swp
-*.swo
 
-# ── Bases de données ─────────────────────────────────────────
-*.db
-*.sqlite
-*.sqlite3
-
-# ── Éditeurs ─────────────────────────────────────────────────
-.vscode/
-.idea/
-*.code-workspace
-
-# ── Environnements & Secrets ─────────────────────────────────
-# NE JAMAIS VERSIONNER LES FICHIERS .env
-.env
-.env.*
-!.env.example
-
-# ── Logs ─────────────────────────────────────────────────────
-*.log
-logs/
+# Project folders (each folder has its own .gitignore)
+# but we keep them visible here to allow git to see the subfolders

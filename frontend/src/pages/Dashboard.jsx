@@ -1,113 +1,98 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
-  BarChart, Bar, CartesianGrid, XAxis, YAxis,
-  LineChart, Line,
+  AreaChart, Area, CartesianGrid, XAxis, YAxis,
 } from 'recharts'
-import { Zap, Activity } from 'lucide-react'
+import { Zap, Activity, ShieldCheck, Wallet, Info, Power } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useTelemetryStore } from '../store/useTelemetryStore'
 
 const API_URL = `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/telemetry`
 
-const FILTERS = [
-  { label: '24H', granularity: 'hour', days: 1 },
-  { label: '7J',  granularity: 'day',  days: 7 },
-  { label: '30J', granularity: 'day',  days: 30 },
-]
+// --- Sous-composant : Jauge de Puissance ---
+function PowerGauge({ value, max = 5000, label = "Puissance Totale" }) {
+  const percentage = Math.min((value / max) * 100, 100)
+  const color = value > 4000 ? '#ef4444' : value > 2000 ? '#f59e0b' : '#10b981'
 
-function Metric({ label, value, unit }) {
   return (
-    <div className="flex flex-col">
-      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">{label}</span>
-      <span className="font-mono font-bold text-slate-200 text-sm">
-        {value ?? '—'} <span className="text-slate-500 text-xs">{unit}</span>
-      </span>
+    <div className="relative flex flex-col items-center justify-center p-6 bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+      <div className="absolute inset-0 opacity-10 bg-radial-gradient from-blue-500/20 to-transparent" />
+      <svg className="w-48 h-48 transform -rotate-90">
+        <circle cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-800" />
+        <circle cx="96" cy="96" r="80" stroke={color} strokeWidth="12" fill="transparent"
+          strokeDasharray={502} strokeDashoffset={502 - (502 * percentage) / 100}
+          className="transition-all duration-1000 ease-out" strokeLinecap="round" />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-4xl font-black text-white">{value.toLocaleString()}</span>
+        <span className="text-slate-500 font-bold text-xs tracking-widest uppercase">Watts</span>
+      </div>
+      <h3 className="mt-4 text-slate-400 font-semibold text-sm flex items-center gap-2">
+        <Zap className="w-4 h-4 text-yellow-400" /> {label}
+      </h3>
     </div>
   )
 }
 
-function DeviceCard({ name, power, voltage_v, current_a, energy_kwh, power_factor, isMaster = false, isActive = true }) {
-  const isOff = !isMaster && !isActive
+// --- Sous-composant : Barre SBEE ---
+function BillingProgress({ currentKwh, totalFcfa, tariffName }) {
+  // Seuil social SBEE typique : 50kWh
+  const threshold = 50
+  const progress = Math.min((currentKwh / threshold) * 100, 100)
+  
   return (
-    <div className={`relative overflow-hidden rounded-2xl p-5 border h-full transition-all duration-500
-      ${isMaster
-        ? 'bg-gradient-to-br from-blue-950/60 to-slate-900 border-blue-800/40'
-        : isOff
-          ? 'bg-slate-900/20 border-slate-800/30 opacity-70'
-          : 'bg-slate-900/50 border-slate-800/50'
-      }`}>
-      {isMaster && <div className="absolute top-0 right-0 p-4 opacity-[0.07]"><Zap className="w-20 h-20 text-blue-400" /></div>}
+    <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-3xl shadow-xl">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-emerald-500/20 rounded-xl"><Wallet className="text-emerald-400 w-5 h-5" /></div>
+          <div>
+            <h3 className="text-white font-bold">Budget Énergie</h3>
+            <p className="text-slate-500 text-xs">{tariffName}</p>
+          </div>
+        </div>
+        <span className="text-2xl font-black text-emerald-400">{totalFcfa.toLocaleString()} <small className="text-[10px]">FCFA</small></span>
+      </div>
       
-      {/* En-tête : nom + badge état */}
-      <div className="flex items-start justify-between mb-1">
-        <h3 className={`font-semibold text-sm ${isMaster ? 'text-blue-400' : isOff ? 'text-slate-600' : 'text-slate-400'}`}>{name}</h3>
-        {!isMaster && (
-          <span className={`flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full
-            ${isActive
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-              : 'bg-slate-800/60 text-slate-500 border border-slate-700/30'
-            }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
-            {isActive ? 'ON' : 'OFF'}
-          </span>
-        )}
-      </div>
-
-      {/* Puissance principale */}
-      <div className="flex items-baseline gap-1 mb-4">
-        <span className={`text-3xl font-black tracking-tight ${isMaster ? 'text-white' : isOff ? 'text-slate-600' : 'text-slate-200'}`}>
-          {power ?? 0}
-        </span>
-        <span className="text-slate-500 font-semibold text-base">W</span>
-      </div>
-
-      {/* Métriques PZEM */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-        <Metric label="Tension"   value={voltage_v}    unit="V" />
-        <Metric label="Courant"   value={current_a}    unit="A" />
-        <Metric label="Cosφ (PF)" value={power_factor} unit="" />
-        {/* L'énergie est cumulée (compteur PZEM) — elle ne se remet pas à 0 à l'extinction */}
-        <div className="flex flex-col">
-          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">
-            {isOff ? 'Cumul session' : 'Énergie'}
-          </span>
-          <span className={`font-mono font-bold text-sm ${isOff ? 'text-slate-600' : 'text-slate-200'}`}>
-            {energy_kwh ?? '—'} <span className="text-slate-500 text-xs">kWh</span>
-          </span>
+      <div className="space-y-2">
+        <div className="flex justify-between text-[10px] font-bold uppercase tracking-tighter text-slate-500">
+          <span>Tranche Sociale</span>
+          <span>{currentKwh.toFixed(1)} / {threshold} kWh</span>
+        </div>
+        <div className="h-3 bg-slate-800 rounded-full overflow-hidden p-0.5">
+          <div className="h-full bg-gradient-to-r from-emerald-500 to-blue-500 rounded-full transition-all duration-1000"
+            style={{ width: `${progress}%` }} />
         </div>
       </div>
     </div>
   )
 }
 
-const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-  if (!percent || percent < 0.04) return null
-  const r = innerRadius + (outerRadius - innerRadius) * 0.55
-  const x = cx + r * Math.cos(-midAngle * Math.PI / 180)
-  const y = cy + r * Math.sin(-midAngle * Math.PI / 180)
-  return (
-    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central"
-      style={{ fontSize: 11, fontWeight: 700 }}>
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  )
-}
+// --- Sous-composant : Carte Node ---
+function NodeCard({ node }) {
+  const isOff = !node.is_active || node.status === 'OFFLINE'
+  
+  const toggle = async () => {
+    try {
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/devices/${node.mac}/toggle`, {
+        method: 'POST'
+      })
+    } catch (e) { console.error("Toggle error", e) }
+  }
 
-// -------------------------------------------------------
-// ChartBox — Fix definitif bug Recharts width=-1
-// requestAnimationFrame garantit le rendu post-GPU-paint.
-// -------------------------------------------------------
-function ChartBox({ height = 240, children }) {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setMounted(true))
-    return () => cancelAnimationFrame(raf)
-  }, [])
   return (
-    <div style={{ position: 'relative', width: '100%', height }}>
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-        {mounted ? children : null}
+    <div className={`p-4 rounded-2xl border transition-all duration-300 ${isOff ? 'bg-slate-950/40 border-slate-900 opacity-60' : 'bg-slate-900/80 border-slate-700 shadow-lg shadow-blue-500/5'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${node.status === 'ONLINE' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+          {node.status}
+        </span>
+        <button onClick={toggle} className={`p-2 rounded-xl transition-colors ${node.is_active ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-500'}`}>
+          <Power className="w-4 h-4" />
+        </button>
+      </div>
+      <h4 className="text-slate-300 font-bold text-sm mb-1 truncate">{node.name}</h4>
+      <div className="flex items-baseline gap-1">
+        <span className="text-xl font-black text-white">{node.power}</span>
+        <span className="text-slate-500 text-xs font-bold uppercase">W</span>
       </div>
     </div>
   )
@@ -115,169 +100,101 @@ function ChartBox({ height = 240, children }) {
 
 export default function Dashboard() {
   const { telemetry, liveHistory } = useTelemetryStore()
-  const [filter, setFilter] = useState(FILTERS[1])
+  
+  const auditData = useMemo(() => [
+    ...telemetry.nodes.map((n, i) => ({ name: n.name, value: n.power, color: i % 2 === 0 ? '#3b82f6' : '#10b981' })),
+    { name: 'Inconnu', value: telemetry.audit.unknown_w, color: '#64748b' }
+  ].filter(d => d.value > 0), [telemetry])
 
-  const safeNodes = Array.isArray(telemetry?.nodes) ? telemetry.nodes : []
-  const totalPower = telemetry?.master_power || 1
-
-  const { data: historyData = [], isLoading: histLoading } = useQuery({
-    queryKey: ['history', filter.granularity, filter.days],
-    queryFn: async () => {
-      const res = await fetch(`${API_URL}/history?granularity=${filter.granularity}&days=${filter.days}`)
-      if (!res.ok) throw new Error('Erreur historique')
-      const d = await res.json()
-      return Array.isArray(d) ? d : []
-    },
-    refetchInterval: 60_000,
-    initialData: [],
-  })
-
-  const pieData = [
-    ...safeNodes.map((node, i) => ({
-      name: node.name,
-      value: node.power ?? 0,
-      color: i === 0 ? '#3b82f6' : '#10b981',
-    })),
-    { name: 'Inconnu', value: telemetry?.unknown_power ?? 0, color: '#64748b' },
-  ].filter(d => d.value > 0)
-
-  if (!telemetry?.master_power && safeNodes.length === 0) {
-    return (
-      <div className="flex flex-col gap-5 animate-pulse">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => <div key={i} className="rounded-2xl bg-slate-900/40 border border-slate-800/50 h-44" />)}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="rounded-2xl bg-slate-900/40 border border-slate-800/50 h-64" />
-          <div className="rounded-2xl bg-slate-900/40 border border-slate-800/50 h-64" />
-        </div>
-      </div>
-    )
+  if (!telemetry.timestamp) {
+    return <div className="h-screen flex items-center justify-center text-slate-500 animate-pulse font-black text-2xl">SENTINEL INITIALIZATION...</div>
   }
 
   return (
-    <div className="flex flex-col gap-5">
-
-      {/* ── Cartes Appareils ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-1 min-w-0">
-          <DeviceCard isMaster
-            name="Compteur Central SBEE"
-            power={telemetry?.master_power?.toLocaleString('fr-FR')}
-            voltage_v={telemetry?.voltage?.toFixed(1)}
-            current_a={telemetry?.current?.toFixed(3)}
-            energy_kwh={telemetry?.billing?.month_kwh?.toFixed(3)}
-            power_factor={telemetry?.power_factor?.toFixed(2)}
-          />
-        </div>
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
-          {safeNodes.map(node => (
-            <div key={node.mac} className="min-w-0">
-              <DeviceCard
-                name={node.name}
-                power={node.power}
-                voltage_v={node.voltage_v?.toFixed(1)}
-                current_a={node.current_a?.toFixed(3)}
-                energy_kwh={node.energy_kwh?.toFixed(3)}
-                power_factor={node.power_factor?.toFixed(2)}
-                isActive={node.is_active}
-              />
+    <div className="max-w-7xl mx-auto p-4 lg:p-8 space-y-6">
+      
+      {/* --- HEADER : VUE D'ENSEMBLE --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <PowerGauge value={telemetry.master.power} />
+        
+        <div className="lg:col-span-2 space-y-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 bg-slate-900/40 border border-slate-800/50 rounded-2xl">
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Tension</p>
+              <p className="text-xl font-black text-white">{telemetry.master.voltage.toFixed(1)} <small className="text-xs text-slate-500">V</small></p>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Graphique Live Temps Réel ── */}
-      <div className="bg-slate-900/40 border border-slate-800/50 rounded-2xl p-5 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <Activity className="w-4 h-4 text-blue-400" />
-          <h3 className="text-white font-bold">Puissance en Temps Réel</h3>
-        </div>
-        <p className="text-slate-500 text-xs mb-4">
-          Dernières {liveHistory.length} mesures — mise à jour toutes les 2s
-        </p>
-        <ChartBox height={200}>
-          <ResponsiveContainer width="100%" height="100%" debounce={50}>
-            <LineChart data={liveHistory} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-              <XAxis dataKey="time" stroke="#475569" fontSize={10} tickLine={false} interval="preserveStartEnd" />
-              <YAxis stroke="#475569" fontSize={10} tickFormatter={v => `${v}W`} width={48} />
-              <Tooltip
-                contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12 }}
-                itemStyle={{ color: '#60a5fa' }}
-                formatter={v => [`${v} W`, 'Puissance']}
-              />
-              <Line
-                type="monotone" dataKey="power" name="Puissance"
-                stroke="#3b82f6" strokeWidth={2.5} dot={false}
-                activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartBox>
-      </div>
-
-      {/* ── Audit + Historique ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        <div className="bg-slate-900/40 border border-slate-800/50 rounded-2xl p-5 min-w-0">
-          <h3 className="text-white font-bold mb-0.5">Répartition de la Charge</h3>
-          <p className="text-slate-500 text-xs mb-4">Audit différentiel en temps réel</p>
-          <ChartBox height={240}>
-            <ResponsiveContainer width="100%" height="100%" debounce={50}>
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90}
-                  paddingAngle={4} dataKey="value" stroke="none"
-                  labelLine={false} label={<PieLabel />} animationDuration={400}>
-                  {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                </Pie>
-                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12 }}
-                  itemStyle={{ color: '#fff' }} formatter={v => `${v} W`} />
-                <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </ChartBox>
-        </div>
-
-        <div className="bg-slate-900/40 border border-slate-800/50 rounded-2xl p-5 min-w-0">
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-white font-bold">Statistiques Historiques</h3>
-              <p className="text-slate-500 text-xs">Consommation (kWh) &amp; Coût (FCFA)</p>
+            <div className="p-4 bg-slate-900/40 border border-slate-800/50 rounded-2xl">
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Courant</p>
+              <p className="text-xl font-black text-white">{telemetry.master.current.toFixed(2)} <small className="text-xs text-slate-500">A</small></p>
             </div>
-            <div className="flex bg-slate-800/60 rounded-xl p-1 border border-slate-700/40 gap-0.5">
-              {FILTERS.map(f => (
-                <button key={f.label} onClick={() => setFilter(f)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all
-                    ${filter.label === f.label ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
-                  {f.label}
-                </button>
-              ))}
+            <div className="p-4 bg-slate-900/40 border border-slate-800/50 rounded-2xl">
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Cos φ</p>
+              <p className="text-xl font-black text-white">{telemetry.master.pf.toFixed(2)}</p>
+            </div>
+            <div className="p-4 bg-slate-900/40 border border-slate-800/50 rounded-2xl">
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Fréquence</p>
+              <p className="text-xl font-black text-white">{telemetry.master.hz.toFixed(1)} <small className="text-xs text-slate-500">Hz</small></p>
             </div>
           </div>
-          <ChartBox height={240}>
-            {histLoading ? (
-              <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">Chargement…</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%" debounce={50}>
-                <BarChart data={historyData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="label" stroke="#475569" fontSize={10} tickLine={false} />
-                  <YAxis yAxisId="l" stroke="#3b82f6" fontSize={10} tickFormatter={v => `${v}`} width={38} />
-                  <YAxis yAxisId="r" orientation="right" stroke="#10b981" fontSize={10}
-                    tickFormatter={v => `${(v/1000).toFixed(0)}k`} width={38} />
-                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12 }}
-                    labelStyle={{ color: '#94a3b8', marginBottom: 4, fontSize: 12 }} />
-                  <Bar yAxisId="l" dataKey="kwh"       name="Énergie (kWh)" fill="#3b82f6" radius={[4,4,0,0]} maxBarSize={28} />
-                  <Bar yAxisId="r" dataKey="cost_fcfa" name="Coût (FCFA)"   fill="#10b981" radius={[4,4,0,0]} opacity={0.8} maxBarSize={28} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </ChartBox>
+
+          <BillingProgress 
+            currentKwh={telemetry.master.kwh_total} 
+            totalFcfa={telemetry.billing.total_fcfa}
+            tariffName={telemetry.billing.active_tariff}
+          />
+        </div>
+      </div>
+
+      {/* --- MILIEU : GRAPHIQUE & AUDIT --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-3xl">
+          <h3 className="text-white font-bold mb-4 flex items-center gap-2"><Activity className="w-4 h-4 text-blue-400" /> Flux de Puissance Live</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={liveHistory}>
+                <defs>
+                  <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="time" hide />
+                <YAxis hide domain={[0, 'auto']} />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
+                <Area type="monotone" dataKey="power" stroke="#3b82f6" fillOpacity={1} fill="url(#colorPower)" isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
+        <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-3xl">
+          <h3 className="text-white font-bold mb-4 flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-emerald-400" /> Audit Différentiel</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={auditData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                  {auditData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b' }} />
+                <Legend iconType="circle" />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
+
+      {/* --- BAS : NODES --- */}
+      <div className="space-y-4">
+        <h3 className="text-white font-black text-xl uppercase tracking-widest flex items-center gap-3">
+          <span className="w-8 h-1 bg-blue-500 rounded-full" /> Équipements Connectés
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {telemetry.nodes.map(node => <NodeCard key={node.mac} node={node} />)}
+          {telemetry.nodes.length === 0 && <div className="col-span-full py-12 text-center text-slate-600 font-bold border-2 border-dashed border-slate-800 rounded-3xl italic">Aucun Node détecté. Branchez un ESP8266 pour commencer l'audit.</div>}
+        </div>
+      </div>
+
     </div>
   )
 }
