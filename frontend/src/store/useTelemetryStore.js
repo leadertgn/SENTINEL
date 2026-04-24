@@ -9,7 +9,7 @@ export const useTelemetryStore = create((set, get) => ({
     master: { power: 0, voltage: 0, current: 0, kwh_total: 0, pf: 0, hz: 0 },
     nodes: [],
     audit: { unknown_w: 0, nodes_total_w: 0 },
-    billing: { total_fcfa: 0, active_tariff: "Attente...", price_per_kwh: 0 },
+    billing: { total_fcfa: 0, energy_cost: 0, fixed_premium: 0, active_tariff: "Attente...", price_per_kwh: 0 },
     timestamp: null
   },
   liveHistory: [],

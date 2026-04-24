@@ -65,6 +65,16 @@ def on_message(client, userdata, msg):
                 ).first()
                 delta_wh = (new_kwh - last_telemetry.energy_kwh) * 1000.0 if last_telemetry and new_kwh >= last_telemetry.energy_kwh else 0.0
 
+                # ── HORODATAGE NTP ──
+                # Si le node envoie un timestamp (via NTP), on l'utilise (historisation hors-ligne).
+                # Sinon, on prend l'heure du serveur.
+                timestamp_val = payload.get("timestamp")
+                if timestamp_val and isinstance(timestamp_val, (int, float)):
+                    # L'ESP envoie généralement l'epoch UNIX en secondes
+                    dt_timestamp = datetime.fromtimestamp(timestamp_val)
+                else:
+                    dt_timestamp = datetime.utcnow()
+
                 telemetry = Telemetry(
                     device_id=device.id,
                     voltage_v=payload.get("voltage_v", 0.0),
@@ -73,7 +83,8 @@ def on_message(client, userdata, msg):
                     energy_kwh=new_kwh,
                     energy_delta_wh=delta_wh,
                     frequency_hz=payload.get("frequency_hz", 50.0),
-                    power_factor=payload.get("pf", 1.0)
+                    power_factor=payload.get("pf", 1.0),
+                    timestamp=dt_timestamp
                 )
                 session.add(telemetry)
                 device.status = StatusEnum.ONLINE
@@ -94,9 +105,9 @@ def _broadcast_unified_snapshot(session: Session):
         last_m = session.exec(select(Telemetry).where(Telemetry.device_id == master.id).order_by(Telemetry.timestamp.desc())).first()
         if not last_m: return
 
-        # CALCUL DU COUT DYNAMIQUE
+        # CALCUL DU COUT DYNAMIQUE (POSTPAYÉ)
         tariff = get_active_tariff(last_m.energy_kwh, session)
-        total_fcfa = calculate_monthly_cost(last_m.energy_kwh, session)
+        billing_data = calculate_monthly_cost(last_m.energy_kwh, session)
 
         nodes = session.exec(select(Device).where(Device.role == RoleEnum.NODE)).all()
         nodes_data = []
@@ -139,9 +150,11 @@ def _broadcast_unified_snapshot(session: Session):
             "nodes": nodes_data,
             "audit": {"unknown_w": max(0, last_m.power_w - total_p_nodes)},
             "billing": {
-                "total_fcfa": int(total_fcfa), 
+                "total_fcfa": int(billing_data["total_fcfa"]), 
+                "energy_cost": int(billing_data["energy_cost"]),
+                "fixed_premium": int(billing_data["fixed_premium"]),
                 "active_tariff": tariff.name if tariff else "Standard", 
-                "price_per_kwh": tariff.price_per_kwh if tariff else 79
+                "price_per_kwh": tariff.price_per_kwh if tariff else 88
             }
         }
 

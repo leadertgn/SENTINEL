@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 
 // ── Clients réseau (statiques = une seule instance) ───────────────
 static WiFiClient   wifiClient;
@@ -14,18 +15,46 @@ static String s_topicData;
 static String s_topicCmd;
 static String s_topicStatus;
 
+bool mqtt_connected() {
+    return mqttClient.connected();
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Vidage de la file d'attente hors-ligne (LittleFS)
+// ─────────────────────────────────────────────────────────────────
+void flush_queue() {
+    if (!LittleFS.exists("/queue.jsonl")) return;
+    
+    File file = LittleFS.open("/queue.jsonl", "r");
+    if (!file) return;
+
+    Serial.println("📤 Vidage de la file d'attente hors-ligne...");
+    int count = 0;
+    
+    // On bloque le flux normal pour vider la mémoire
+    while(file.available()) {
+        String line = file.readStringUntil('\n');
+        line.trim();
+        if (line.length() > 5) {
+            mqttClient.publish(s_topicData.c_str(), line.c_str());
+            delay(10); // Petit délai pour laisser respirer le broker
+            mqttClient.loop();
+            yield(); // Reset du Watchdog Timer
+            count++;
+        }
+    }
+    file.close();
+    LittleFS.remove("/queue.jsonl");
+    Serial.printf("✅ File d'attente vidée (%d messages envoyés).\n", count);
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  Callback — Messages MQTT entrants (commandes relais)
 // ─────────────────────────────────────────────────────────────────
 static void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     String cmd = "";
     for (unsigned int i = 0; i < length; i++) cmd += (char)payload[i];
-
     Serial.printf("📩 [MQTT CMD] Topic: %s | Payload: %s\n", topic, cmd.c_str());
-
-    // Le MASTER ne pilote pas de relais.
-    // Cette règle est aussi garantie côté backend (HTTP 403).
-    // On log et on ignore — comportement documenté et intentionnel.
     Serial.println("⛔ [MASTER] Commande relais ignorée : le maître ne coupe pas lui-même.");
 }
 
@@ -43,43 +72,38 @@ void wifi_connect() {
         Serial.print(".");
         retries++;
         if (retries >= WIFI_MAX_RETRIES) {
-            Serial.println("\n❌ WiFi timeout — redémarrage ESP32...");
-            ESP.restart();  // Redémarre proprement
+            Serial.println("\n❌ WiFi timeout — mode hors-ligne activé...");
+            break; // On ne redémarre plus, on passe en mode hors-ligne
         }
     }
 
-    Serial.printf("\n✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf("\n✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
+    }
 
-    // ── Identifiant unique : adresse MAC WiFi ────────────────────
-    // En LOCAL_MODE, on utilise un MAC fictif pour ne pas polluer la DB réelle
-    // En PROD, on lit le vrai MAC hardware (immuable, gravé en ROM)
 #if LOCAL_MODE
     s_deviceMac = DEVICE_MAC_LOCAL;
 #else
     s_deviceMac = WiFi.macAddress();
-    s_deviceMac.replace(":", "");  // "AA:BB:CC:DD:EE:FF" → "AABBCCDDEEFF"
+    s_deviceMac.replace(":", "");
 #endif
 
-    // Construction des topics MQTT depuis le MAC
     s_topicData   = "sbee/devices/" + s_deviceMac + "/data";
     s_topicCmd    = "sbee/devices/" + s_deviceMac + "/cmd";
     s_topicStatus = "sbee/devices/" + s_deviceMac + "/status";
-
-    Serial.printf("🔖 Identifiant appareil : %s\n", s_deviceMac.c_str());
-    Serial.printf("📡 Topics MQTT : %s\n", s_topicData.c_str());
 }
 
 // ─────────────────────────────────────────────────────────────────
 //  MQTT — Connexion (et reconnexion automatique)
 // ─────────────────────────────────────────────────────────────────
 static void mqtt_connect() {
-    while (!mqttClient.connected()) {
+    if (WiFi.status() != WL_CONNECTED) return; // Pas de WiFi = Pas de MQTT
+
+    while (!mqttClient.connected() && WiFi.status() == WL_CONNECTED) {
         Serial.printf("🔌 Connexion MQTT → %s:%d\n", MQTT_BROKER, MQTT_PORT);
-
         String clientId = "SENTINEL_MASTER_" + s_deviceMac;
-        bool connected;
+        bool connected = false;
 
-        // Auth MQTT (optionnel — configurable dans secrets.h)
         if (strlen(MQTT_USER) > 0) {
             connected = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
         } else {
@@ -88,17 +112,14 @@ static void mqtt_connect() {
 
         if (connected) {
             Serial.println("✅ MQTT connecté !");
-
-            // Publication du statut ONLINE (sécurisé)
             String statusPayload = "{\"state\":\"ONLINE\",\"role\":\"MASTER\",\"mac_address\":\"" + s_deviceMac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
-            mqttClient.publish(s_topicStatus.c_str(), statusPayload.c_str(), true);  // retain=true
-
-            // Abonnement aux commandes (ignorées par le Master, mais on écoute quand même)
+            mqttClient.publish(s_topicStatus.c_str(), statusPayload.c_str(), true);
             mqttClient.subscribe(s_topicCmd.c_str());
-            Serial.printf("📬 Abonné à : %s\n", s_topicCmd.c_str());
+            
+            // Vidage de la file d'attente (si données hors-ligne)
+            flush_queue();
         } else {
-            Serial.printf("❌ Échec MQTT (code: %d) — nouvelle tentative dans %dms\n",
-                          mqttClient.state(), MQTT_RECONNECT_MS);
+            Serial.printf("❌ Échec MQTT (code: %d) — nouvelle tentative dans %dms\n", mqttClient.state(), MQTT_RECONNECT_MS);
             delay(MQTT_RECONNECT_MS);
         }
     }
@@ -111,48 +132,56 @@ void mqtt_setup() {
     wifi_connect();
     mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
     mqttClient.setCallback(onMqttMessage);
-    mqttClient.setBufferSize(512);  // Augmenter si payload > 256 bytes
-    mqtt_connect();
+    mqttClient.setBufferSize(512);
+    if (WiFi.status() == WL_CONNECTED) mqtt_connect();
 }
 
 void mqtt_loop() {
+    if (WiFi.status() != WL_CONNECTED) {
+        // Tentative de reconnexion WiFi si perdu
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        return; // Hors-ligne, on sort
+    }
     if (!mqttClient.connected()) {
-        Serial.println("⚠️  MQTT déconnecté — tentative de reconnexion...");
         mqtt_connect();
     }
     mqttClient.loop();
 }
 
-void publish_telemetry(const SensorData& data) {
-    if (!mqttClient.connected()) {
-        Serial.println("⚠️  Envoi ignoré : MQTT non connecté");
-        return;
-    }
-
-    // ── Construction du payload JSON ──────────────────────────────
-    // Contrat strict avec le backend SENTINEL (mqtt_client.py)
-    // Champs attendus : mac_address, role, voltage_v, current_a,
-    //                   power_w, energy_kwh, frequency_hz, power_factor
-    // Champ additionnel : energy_delta_wh (ignoré par le backend actuel,
-    //                     utile pour les évolutions V2)
+void publish_telemetry(const SensorData& data, unsigned long timestamp) {
     JsonDocument doc;
     doc["mac_address"]      = s_deviceMac;
     doc["secret_key"]       = DEVICE_SECRET;
     doc["role"]             = DEVICE_ROLE;
-    doc["voltage_v"]        = round(data.voltage_v    * 10)   / 10.0;  // 1 décimale
-    doc["current_a"]        = round(data.current_a    * 1000) / 1000.0;// 3 décimales
-    doc["power_w"]          = round(data.power_w      * 10)   / 10.0;  // 1 décimale
-    doc["energy_kwh"]       = round(data.energy_kwh   * 10000)/ 10000.0;// 4 décimales
-    doc["frequency_hz"]     = round(data.frequency_hz * 100)  / 100.0; // 2 décimales
-    doc["pf"]               = round(data.power_factor  * 100) / 100.0; // 2 décimales
+    doc["timestamp"]        = timestamp; // Ajout de l'heure
+    doc["voltage_v"]        = round(data.voltage_v    * 10)   / 10.0;
+    doc["current_a"]        = round(data.current_a    * 1000) / 1000.0;
+    doc["power_w"]          = round(data.power_w      * 10)   / 10.0;
+    doc["energy_kwh"]       = round(data.energy_kwh   * 10000)/ 10000.0;
+    doc["frequency_hz"]     = round(data.frequency_hz * 100)  / 100.0;
+    doc["pf"]               = round(data.power_factor * 100)  / 100.0;
 
     char payload[512];
     serializeJson(doc, payload, sizeof(payload));
 
+    if (!mqttClient.connected()) {
+        // HORS-LIGNE : Sauvegarde dans LittleFS
+        File file = LittleFS.open("/queue.jsonl", FILE_APPEND);
+        if (file) {
+            file.println(payload);
+            file.close();
+            Serial.println("💾 [HORS-LIGNE] Sauvegarde en Flash réussie.");
+        } else {
+            Serial.println("❌ [ERREUR] Impossible d'écrire dans LittleFS.");
+        }
+        return;
+    }
+
+    // EN LIGNE : Envoi normal
     bool ok = mqttClient.publish(s_topicData.c_str(), payload);
     if (ok) {
         Serial.printf("📤 [MQTT] %s\n    └→ %s\n", s_topicData.c_str(), payload);
     } else {
-        Serial.println("❌ [MQTT] Échec de publication — vérifier taille buffer");
+        Serial.println("❌ [MQTT] Échec de publication");
     }
 }

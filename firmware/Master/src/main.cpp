@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <LittleFS.h>
+#include <WiFiUdp.h>
+#include <NTPClient.h>
 #include "config.h"
 #include "pzem_reader.h"
 #include "mqtt_handler.h"
@@ -9,10 +12,19 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 static unsigned long lastPublishMs = 0;
 bool lcdAvailable = false;
 
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600); // 3600 = GMT+1
+
 void setup() {
     Serial.begin(115200);
     delay(1000);
     Serial.println("\n🛡️ SENTINEL MASTER STARTING...");
+
+    if (!LittleFS.begin(true)) {
+        Serial.println("❌ Erreur de montage LittleFS");
+    } else {
+        Serial.println("📂 LittleFS initialisé");
+    }
 
     // Test I2C pour le LCD
     Wire.begin(21, 22);
@@ -29,6 +41,7 @@ void setup() {
 
     pzem_init();
     mqtt_setup();
+    timeClient.begin();
     
     if (lcdAvailable) {
         lcd.clear();
@@ -38,13 +51,16 @@ void setup() {
 
 void loop() {
     mqtt_loop();
+    timeClient.update();
+    
     unsigned long now = millis();
+    unsigned long currentInterval = mqtt_connected() ? PUBLISH_INTERVAL_MS : OFFLINE_INTERVAL_MS;
 
-    if (now - lastPublishMs >= PUBLISH_INTERVAL_MS) {
+    if (now - lastPublishMs >= currentInterval) {
         lastPublishMs = now;
         SensorData data = read_sensor();
         if (data.valid) {
-            publish_telemetry(data);
+            publish_telemetry(data, timeClient.getEpochTime());
             
             if (lcdAvailable) {
                 lcd.setCursor(0,0);

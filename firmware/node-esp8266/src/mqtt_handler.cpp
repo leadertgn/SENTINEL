@@ -1,6 +1,7 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 #include "mqtt_handler.h"
 #include "config.h"
 
@@ -8,6 +9,43 @@ static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
 static String s_mac;
 static bool s_relayState = false;
+
+bool mqtt_connected() {
+    return mqttClient.connected();
+}
+
+bool get_relay_state() { 
+    return s_relayState; 
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Vidage de la file d'attente hors-ligne (LittleFS)
+// ─────────────────────────────────────────────────────────────────
+void flush_queue() {
+    if (!LittleFS.exists("/queue.jsonl")) return;
+    
+    File file = LittleFS.open("/queue.jsonl", "r");
+    if (!file) return;
+
+    Serial.println("📤 Vidage de la file d'attente hors-ligne...");
+    int count = 0;
+    
+    // On bloque le flux normal pour vider la mémoire
+    while(file.available()) {
+        String line = file.readStringUntil('\n');
+        line.trim();
+        if (line.length() > 5) {
+            mqttClient.publish(("sbee/devices/" + s_mac + "/data").c_str(), line.c_str());
+            delay(10); // Petit délai pour laisser respirer le broker
+            mqttClient.loop();
+            yield(); // Reset du Watchdog Timer
+            count++;
+        }
+    }
+    file.close();
+    LittleFS.remove("/queue.jsonl");
+    Serial.printf("✅ File d'attente vidée (%d messages envoyés).\n", count);
+}
 
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     JsonDocument doc;
@@ -36,7 +74,13 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 
 void mqtt_setup() {
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) { delay(500); }
+    
+    int retries = 0;
+    while (WiFi.status() != WL_CONNECTED) { 
+        delay(500); 
+        retries++;
+        if (retries >= WIFI_MAX_RETRIES) break; // Mode hors-ligne
+    }
     
     s_mac = WiFi.macAddress();
     s_mac.replace(":", "");
@@ -46,11 +90,17 @@ void mqtt_setup() {
 }
 
 void mqtt_loop() {
+    if (WiFi.status() != WL_CONNECTED) {
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        return;
+    }
+
     if (!mqttClient.connected()) {
         Serial.printf("🔌 Tentative connexion MQTT Node (%s)...\n", s_mac.c_str());
         if (mqttClient.connect(s_mac.c_str())) {
             Serial.println("✅ MQTT Connecté");
             mqttClient.subscribe(("sbee/devices/" + s_mac + "/cmd").c_str());
+            flush_queue(); // Vidage dès la connexion réussie
         } else {
             delay(5000);
         }
@@ -58,14 +108,13 @@ void mqtt_loop() {
     mqttClient.loop();
 }
 
-bool get_relay_state() { return s_relayState; }
-
-void publish_telemetry(const SensorData& data) {
+void publish_telemetry(const SensorData& data, unsigned long timestamp) {
     JsonDocument doc;
     doc["mac_address"] = s_mac;
     doc["secret_key"]  = DEVICE_SECRET;
     doc["role"]        = DEVICE_ROLE;
     doc["is_active"]   = s_relayState;
+    doc["timestamp"]   = timestamp;
     doc["voltage_v"]   = data.voltage_v;
     doc["current_a"]   = data.current_a;
     doc["power_w"]     = data.power_w;
@@ -76,10 +125,24 @@ void publish_telemetry(const SensorData& data) {
     char buffer[512];
     serializeJson(doc, buffer);
     
-    // CORRECTION DU TOPIC : Ajout du MAC pour matcher sbee/devices/+/data
     String topic = "sbee/devices/" + s_mac + "/data";
-    bool ok = mqttClient.publish(topic.c_str(), buffer);
     
+    if (!mqttClient.connected()) {
+        // HORS-LIGNE : Sauvegarde dans LittleFS
+        // Note: Sur ESP8266, le mode d'ajout est "a" et non FILE_APPEND
+        File file = LittleFS.open("/queue.jsonl", "a");
+        if (file) {
+            file.println(buffer);
+            file.close();
+            Serial.println("💾 [HORS-LIGNE] Sauvegarde en Flash (Node) réussie.");
+        } else {
+            Serial.println("❌ [ERREUR] Impossible d'écrire dans LittleFS.");
+        }
+        return;
+    }
+
+    // EN LIGNE : Envoi normal
+    bool ok = mqttClient.publish(topic.c_str(), buffer);
     if (ok) {
         Serial.printf("📤 [MQTT] %s | P: %.1fW\n", topic.c_str(), data.power_w);
     } else {

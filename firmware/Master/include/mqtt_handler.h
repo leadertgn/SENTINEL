@@ -18,5 +18,8 @@ void mqtt_setup();
 // et traite les messages entrants (commandes relais)
 void mqtt_loop();
 
+// Vérifie si le client MQTT est connecté
+bool mqtt_connected();
+
 // Sérialise les données en JSON et publie sur le topic MQTT
-void publish_telemetry(const SensorData& data);
+void publish_telemetry(const SensorData& data, unsigned long timestamp);
