@@ -6,7 +6,7 @@
 #include "pzem_reader.h"
 #include "mqtt_handler.h"
 
-static unsigned long lastPublishMs = 0;
+unsigned long lastPublishMs = 0;
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600); // 3600 = GMT+1
@@ -34,9 +34,18 @@ void setup() {
 
 void loop() {
     mqtt_loop();
-    timeClient.update();
-
+    
     unsigned long now = millis();
+    
+    // On met à jour l'heure NTP seulement toutes les minutes
+    // Cela évite que l'échec DNS (timeout de 15s) ne bloque la boucle
+    // et ne provoque la déconnexion du client MQTT !
+    static unsigned long lastNtpUpdate = 0;
+    if (now - lastNtpUpdate >= 60000) {
+        lastNtpUpdate = now;
+        timeClient.update();
+    }
+
     unsigned long currentInterval = mqtt_connected() ? PUBLISH_INTERVAL_MS : OFFLINE_INTERVAL_MS;
 
     if (now - lastPublishMs >= currentInterval) {

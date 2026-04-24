@@ -92,11 +92,9 @@ def on_message(_client, _userdata, msg):
                 )
                 session.add(telemetry)
                 device.status = StatusEnum.ONLINE
-                session.add(device)
                 session.commit()
 
-                if device.role == RoleEnum.MASTER:
-                    _broadcast_unified_snapshot(session)
+                _broadcast_unified_snapshot(session)
 
             elif "/status" in msg.topic:
                 state_str = payload.get("state", "ONLINE").upper()

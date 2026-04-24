@@ -9,6 +9,7 @@ static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
 static String s_mac;
 static bool s_relayState = false;
+extern unsigned long lastPublishMs; // Expose la variable de main.cpp
 
 bool mqtt_connected() {
     return mqttClient.connected();
@@ -69,6 +70,10 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
         char buffer[128];
         serializeJson(res, buffer);
         mqttClient.publish(("sbee/devices/" + s_mac + "/status").c_str(), buffer);
+        
+        // Force la boucle principale à publier la nouvelle télémétrie immédiatement
+        // Cela supprime la latence de 3 à 6 secondes perçue sur l'interface !
+        lastPublishMs = 0; 
     }
 }
 

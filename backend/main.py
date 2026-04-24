@@ -10,7 +10,9 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.base import BillingTariff
 from fastapi import Depends
+import logging
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
