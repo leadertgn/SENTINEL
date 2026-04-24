@@ -78,6 +78,7 @@ async def simulate_hardware_data():
 
                 energy[node.mac_address] = energy.get(node.mac_address, 0.0) + (w / 1000.0) * time_h
                 kwh = energy[node.mac_address]
+                delta_wh = (w * time_h) # w est en W, time_h en h -> Wh
 
                 telemetry = Telemetry(
                     device_id=node.id,
@@ -85,6 +86,7 @@ async def simulate_hardware_data():
                     current_a=round(w / volts, 3),
                     power_w=round(w, 2),
                     energy_kwh=round(kwh, 4),
+                    energy_delta_wh=round(delta_wh, 4),
                     frequency_hz=freq,
                     power_factor=pf,
                 )
@@ -109,6 +111,7 @@ async def simulate_hardware_data():
 
             energy[master_db.mac_address] = energy.get(master_db.mac_address, 0.0) + (w_master / 1000.0) * time_h
             kwh_master = energy[master_db.mac_address]
+            delta_wh_master = w_master * time_h
 
             # Calcul du coût mensuel depuis la DB
             cost = calculate_monthly_cost(kwh_master, session)
@@ -124,6 +127,7 @@ async def simulate_hardware_data():
                 current_a=round(w_master / volts, 3),
                 power_w=round(w_master, 2),
                 energy_kwh=round(kwh_master, 4),
+                energy_delta_wh=round(delta_wh_master, 4),
                 frequency_hz=freq,
                 power_factor=pf,
             )

@@ -4,12 +4,14 @@ Service de seed des données initiales :
 - Tranches tarifaires SBEE scalables en base
 """
 from sqlmodel import Session, select
+from sqlalchemy import desc
 from app.models.base import Device, BillingTariff, RoleEnum
 
-# ─── Tranches SBEE ─────────────────────────────────────────────────────────────
+# ─── Tranches SBEE (Postpayé Basse Tension) ────────────────────────────────────
 SBEE_TARIFFS = [
-    {"name": "Tranche Sociale", "min_kwh": 0.0,  "max_kwh": 50.0,  "price_per_kwh": 86.0},
-    {"name": "Tranche Normale", "min_kwh": 50.0, "max_kwh": None,  "price_per_kwh": 130.0},
+    {"name": "Tranche Sociale", "min_kwh": 0.0,   "max_kwh": 20.0,   "price_per_kwh": 88.0},
+    {"name": "Tranche 1",       "min_kwh": 20.0,  "max_kwh": 250.0,  "price_per_kwh": 125.0},
+    {"name": "Tranche 2",       "min_kwh": 250.0, "max_kwh": None,   "price_per_kwh": 148.0},
 ]
 
 # ─── Appareils de démo ─────────────────────────────────────────────────────────
@@ -61,7 +63,7 @@ def seed_devices(session: Session):
 def get_active_tariff(kwh: float, session: Session) -> BillingTariff | None:
     """Retourne la tranche applicable en fonction de la conso totale du mois."""
     tariffs = session.exec(
-        select(BillingTariff).order_by(BillingTariff.min_kwh.desc())
+        select(BillingTariff).order_by(desc(BillingTariff.min_kwh))
     ).all()
     for t in tariffs:
         if kwh >= t.min_kwh:
@@ -69,39 +71,43 @@ def get_active_tariff(kwh: float, session: Session) -> BillingTariff | None:
     return None
 
 
-def calculate_monthly_cost(kwh: float, session: Session) -> float:
+def calculate_monthly_cost(kwh: float, session: Session) -> dict:
     """
-    Calcul SBEE progressif par paliers (conforme au cahier des charges).
-    
-    Chaque tranche est facturée à son propre tarif :
-    - kWh dans [0 ; 50]    → 86 FCFA/kWh  (Tranche Sociale)
-    - kWh au-delà de 50    → 130 FCFA/kWh (Tranche Normale)
-    
-    Exemple : 80 kWh → (50 × 86) + (30 × 130) = 4 300 + 3 900 = 8 200 FCFA
+    Calcul SBEE progressif par paliers (Postpayé).
+    Inclus la prime fixe d'abonnement (500 FCFA / KVA).
+    Hypothèse pour étude : 5 KVA.
     """
     tariffs = session.exec(
         select(BillingTariff).order_by(BillingTariff.min_kwh)
     ).all()
     
-    if not tariffs:
-        return 0.0
+    # Abonnement mensuel : 500 FCFA par KVA (On fixe à 5 KVA pour la démo)
+    kva_souscrit = 5
+    fixed_premium = 500 * kva_souscrit
     
-    total_cost = 0.0
+    if not tariffs:
+        return {"energy_cost": 0.0, "fixed_premium": fixed_premium, "total_fcfa": fixed_premium}
+    
+    energy_cost = 0.0
     remaining_kwh = kwh
     
-    for i, tariff in enumerate(tariffs):
+    for tariff in tariffs:
         if remaining_kwh <= 0:
             break
         
-        # Calculer la borne supérieure de cette tranche
         if tariff.max_kwh is not None:
             tranche_size = tariff.max_kwh - tariff.min_kwh
         else:
-            # Dernière tranche : illimitée — on prend tout le reste
             tranche_size = remaining_kwh
         
         kwh_in_this_tranche = min(remaining_kwh, tranche_size)
-        total_cost += kwh_in_this_tranche * tariff.price_per_kwh
+        energy_cost += kwh_in_this_tranche * tariff.price_per_kwh
         remaining_kwh -= kwh_in_this_tranche
     
-    return round(total_cost, 2)
+    total_cost = energy_cost + fixed_premium
+    
+    return {
+        "energy_cost": round(energy_cost, 2),
+        "fixed_premium": fixed_premium,
+        "total_fcfa": round(total_cost, 2)
+    }

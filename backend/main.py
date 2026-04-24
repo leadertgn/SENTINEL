@@ -1,5 +1,3 @@
-import asyncio
-
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,13 +5,14 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import create_db_and_tables
 from app.api import telemetry, devices
-from app.services.mock_hardware import simulate_hardware_data
 from app.core.mqtt_client import start_mqtt_client
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.base import BillingTariff
+from fastapi import Depends
+import logging
 
-
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
@@ -21,8 +20,7 @@ async def lifespan(app: FastAPI):
     start_mqtt_client()
     if settings.SIMULATION_MODE:
         import logging
-        logging.getLogger("main").info("🔵 MODE SIMULATION activé — mock_hardware en cours")
-        asyncio.create_task(simulate_hardware_data())
+        logging.getLogger("main").info("🔵 MODE SIMULATION firmware attendu via MQTT")
     else:
         import logging
         logging.getLogger("main").info("🟢 MODE PRODUCTION — En attente des trames MQTT réelles")
@@ -40,12 +38,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
-app.include_router(telemetry.router, prefix="/api/telemetry", tags=["Telemetry"])
+app.include_router(devices.router)
+app.include_router(telemetry.router)
 
 # Route tariffs (scalable depuis la DB)
-from fastapi import Depends
-
 @app.get("/api/tariffs")
 def get_tariffs(session: Session = Depends(get_session)):
     return session.exec(select(BillingTariff).order_by(BillingTariff.min_kwh)).all()

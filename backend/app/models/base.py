@@ -1,6 +1,6 @@
-from datetime import datetime
-from typing import Optional, List
-from sqlmodel import SQLModel, Field, Relationship
+from datetime import datetime, timezone
+from typing import Optional
+from sqlmodel import SQLModel, Field
 from enum import Enum
 
 class RoleEnum(str, Enum):
@@ -19,6 +19,7 @@ class Device(SQLModel, table=True):
     role: RoleEnum
     status: StatusEnum = Field(default=StatusEnum.OFFLINE)
     is_active: bool = Field(default=True) # État du relais
+    secret_key: str = Field(default="SENTINEL_DEFAULT_KEY") # Clé d'authentification
     master_device_id: Optional[int] = Field(default=None, foreign_key="device.id")
 
 class Telemetry(SQLModel, table=True):
@@ -30,9 +31,10 @@ class Telemetry(SQLModel, table=True):
     current_a: float
     power_w: float
     energy_kwh: float
+    energy_delta_wh: float = Field(default=0.0) # Consommation de l'intervalle (Wh)
     frequency_hz: float
     power_factor: float
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class BillingTariff(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

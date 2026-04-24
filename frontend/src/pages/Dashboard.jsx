@@ -1,282 +1,208 @@
-import React, { useState, useEffect } from 'react'
-import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
-  BarChart, Bar, CartesianGrid, XAxis, YAxis,
-  LineChart, Line,
-} from 'recharts'
-import { Zap, Activity } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import React, { useMemo } from 'react'
 import { useTelemetryStore } from '../store/useTelemetryStore'
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from 'recharts'
+import { Activity, Info, Zap, ShieldAlert } from 'lucide-react'
 
-const API_URL = `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/telemetry`
+// --- COMPOSANT : CARTE APPAREIL (Device Card) ---
+const DeviceCard = ({ device }) => {
+  const isMaster = device.role === 'MASTER'
+  const isOnline = device.status === 'ONLINE'
+  
+  // Couleurs conditionnelles
+  const themeColor = isMaster ? 'blue' : 'emerald'
+  const bgGradient = isMaster ? 'from-blue-900/20 to-slate-900/40' : 'from-emerald-900/10 to-slate-900/40'
+  const borderColor = isMaster ? 'border-blue-500/20' : 'border-slate-800/50'
 
-const FILTERS = [
-  { label: '24H', granularity: 'hour', days: 1 },
-  { label: '7J',  granularity: 'day',  days: 7 },
-  { label: '30J', granularity: 'day',  days: 30 },
-]
-
-function Metric({ label, value, unit }) {
   return (
-    <div className="flex flex-col">
-      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">{label}</span>
-      <span className="font-mono font-bold text-slate-200 text-sm">
-        {value ?? '—'} <span className="text-slate-500 text-xs">{unit}</span>
-      </span>
-    </div>
-  )
-}
-
-function DeviceCard({ name, power, voltage_v, current_a, energy_kwh, power_factor, isMaster = false, isActive = true }) {
-  const isOff = !isMaster && !isActive
-  return (
-    <div className={`relative overflow-hidden rounded-2xl p-5 border h-full transition-all duration-500
-      ${isMaster
-        ? 'bg-gradient-to-br from-blue-950/60 to-slate-900 border-blue-800/40'
-        : isOff
-          ? 'bg-slate-900/20 border-slate-800/30 opacity-70'
-          : 'bg-slate-900/50 border-slate-800/50'
-      }`}>
-      {isMaster && <div className="absolute top-0 right-0 p-4 opacity-[0.07]"><Zap className="w-20 h-20 text-blue-400" /></div>}
+    <div className={`p-6 rounded-3xl border bg-gradient-to-br ${bgGradient} ${borderColor} shadow-lg backdrop-blur-sm relative overflow-hidden group hover:border-${themeColor}-500/40 transition-colors duration-300`}>
       
-      {/* En-tête : nom + badge état */}
-      <div className="flex items-start justify-between mb-1">
-        <h3 className={`font-semibold text-sm ${isMaster ? 'text-blue-400' : isOff ? 'text-slate-600' : 'text-slate-400'}`}>{name}</h3>
-        {!isMaster && (
-          <span className={`flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full
-            ${isActive
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-              : 'bg-slate-800/60 text-slate-500 border border-slate-700/30'
-            }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
-            {isActive ? 'ON' : 'OFF'}
+      {/* --- En-tête de la carte --- */}
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-xl font-black text-white tracking-tight">{device.name}</h3>
+            {isMaster && (
+              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-${themeColor}-500/20 text-${themeColor}-400 border border-${themeColor}-500/30`}>
+                Général
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] text-slate-500 font-mono bg-slate-950/50 px-2 py-0.5 rounded border border-slate-800">
+            {device.mac}
           </span>
-        )}
-      </div>
+        </div>
 
-      {/* Puissance principale */}
-      <div className="flex items-baseline gap-1 mb-4">
-        <span className={`text-3xl font-black tracking-tight ${isMaster ? 'text-white' : isOff ? 'text-slate-600' : 'text-slate-200'}`}>
-          {power ?? 0}
-        </span>
-        <span className="text-slate-500 font-semibold text-base">W</span>
-      </div>
-
-      {/* Métriques PZEM */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-        <Metric label="Tension"   value={voltage_v}    unit="V" />
-        <Metric label="Courant"   value={current_a}    unit="A" />
-        <Metric label="Cosφ (PF)" value={power_factor} unit="" />
-        {/* L'énergie est cumulée (compteur PZEM) — elle ne se remet pas à 0 à l'extinction */}
-        <div className="flex flex-col">
-          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">
-            {isOff ? 'Cumul session' : 'Énergie'}
-          </span>
-          <span className={`font-mono font-bold text-sm ${isOff ? 'text-slate-600' : 'text-slate-200'}`}>
-            {energy_kwh ?? '—'} <span className="text-slate-500 text-xs">kWh</span>
+        {/* Indicateur de statut */}
+        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-950/80 border border-slate-800">
+          <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? `bg-${themeColor}-500 shadow-[0_0_8px_currentColor] text-${themeColor}-500` : 'bg-rose-500'}`}></div>
+          <span className={`text-[9px] font-bold uppercase tracking-widest ${isOnline ? `text-${themeColor}-400` : 'text-rose-500'}`}>
+            {isOnline ? 'Online' : 'Offline'}
           </span>
         </div>
       </div>
-    </div>
-  )
-}
 
-const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-  if (!percent || percent < 0.04) return null
-  const r = innerRadius + (outerRadius - innerRadius) * 0.55
-  const x = cx + r * Math.cos(-midAngle * Math.PI / 180)
-  const y = cy + r * Math.sin(-midAngle * Math.PI / 180)
-  return (
-    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central"
-      style={{ fontSize: 11, fontWeight: 700 }}>
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  )
-}
-
-// -------------------------------------------------------
-// ChartBox — Fix definitif bug Recharts width=-1
-// requestAnimationFrame garantit le rendu post-GPU-paint.
-// -------------------------------------------------------
-function ChartBox({ height = 240, children }) {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setMounted(true))
-    return () => cancelAnimationFrame(raf)
-  }, [])
-  return (
-    <div style={{ position: 'relative', width: '100%', height }}>
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-        {mounted ? children : null}
+      {/* --- Mesure Principale : PUISSANCE (W) --- */}
+      <div className="mb-6 flex items-end gap-2">
+        <p className={`text-5xl font-black leading-none ${isMaster ? 'text-blue-400' : 'text-emerald-400'}`}>
+          {(device.power || 0).toFixed(0)}
+        </p>
+        <p className="text-sm font-bold text-slate-400 uppercase mb-1">Watts</p>
       </div>
+
+      {/* --- Grille des sous-métriques --- */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="p-3 bg-slate-950/40 rounded-2xl border border-slate-800/50 flex flex-col justify-between">
+          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Tension</span>
+          <span className="text-sm font-black text-white">{(device.voltage || 0).toFixed(1)} <small className="text-[10px] text-slate-500 font-bold">V</small></span>
+        </div>
+        <div className="p-3 bg-slate-950/40 rounded-2xl border border-slate-800/50 flex flex-col justify-between">
+          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Courant</span>
+          <span className="text-sm font-black text-white">{(device.current || 0).toFixed(2)} <small className="text-[10px] text-slate-500 font-bold">A</small></span>
+        </div>
+        <div className="p-3 bg-slate-950/40 rounded-2xl border border-slate-800/50 flex flex-col justify-between">
+          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Cos φ</span>
+          <span className="text-sm font-black text-white">{(device.power_factor || 0).toFixed(2)}</span>
+        </div>
+        <div className="p-3 bg-slate-950/40 rounded-2xl border border-slate-800/50 flex flex-col justify-between">
+          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Fréquence</span>
+          <span className="text-sm font-black text-white">{(device.frequency_hz || 0).toFixed(1)} <small className="text-[10px] text-slate-500 font-bold">Hz</small></span>
+        </div>
+      </div>
+
+      {/* --- Pied de carte : Énergie --- */}
+      <div className="mt-4 pt-4 border-t border-slate-800/50 flex justify-between items-center">
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+          <Zap className="w-3 h-3" /> Énergie Cumulée
+        </span>
+        <span className="text-xs font-black text-white">{((device.kwh_total || 0) * 1000).toFixed(1)} Wh</span>
+      </div>
+
+      {/* Halo de fond */}
+      <div className={`absolute -bottom-12 -right-12 w-32 h-32 rounded-full blur-3xl opacity-10 bg-${themeColor}-500 pointer-events-none`}></div>
     </div>
   )
 }
 
 export default function Dashboard() {
   const { telemetry, liveHistory } = useTelemetryStore()
-  const [filter, setFilter] = useState(FILTERS[1])
+  
+  const auditData = useMemo(() => [
+    { name: 'Nodes Monitorés', value: telemetry.nodes.reduce((acc, n) => acc + (n.power || 0), 0), color: '#10b981' }, // emerald-500
+    { name: 'Charge Inconnue', value: Math.max(0, telemetry.audit.unknown_w), color: '#f43f5e' } // rose-500
+  ], [telemetry])
 
-  const safeNodes = Array.isArray(telemetry?.nodes) ? telemetry.nodes : []
-  const totalPower = telemetry?.master_power || 1
-
-  const { data: historyData = [], isLoading: histLoading } = useQuery({
-    queryKey: ['history', filter.granularity, filter.days],
-    queryFn: async () => {
-      const res = await fetch(`${API_URL}/history?granularity=${filter.granularity}&days=${filter.days}`)
-      if (!res.ok) throw new Error('Erreur historique')
-      const d = await res.json()
-      return Array.isArray(d) ? d : []
-    },
-    refetchInterval: 60_000,
-    initialData: [],
-  })
-
-  const pieData = [
-    ...safeNodes.map((node, i) => ({
-      name: node.name,
-      value: node.power ?? 0,
-      color: i === 0 ? '#3b82f6' : '#10b981',
-    })),
-    { name: 'Inconnu', value: telemetry?.unknown_power ?? 0, color: '#64748b' },
-  ].filter(d => d.value > 0)
-
-  if (!telemetry?.master_power && safeNodes.length === 0) {
+  if (!telemetry.timestamp) {
     return (
-      <div className="flex flex-col gap-5 animate-pulse">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => <div key={i} className="rounded-2xl bg-slate-900/40 border border-slate-800/50 h-44" />)}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="rounded-2xl bg-slate-900/40 border border-slate-800/50 h-64" />
-          <div className="rounded-2xl bg-slate-900/40 border border-slate-800/50 h-64" />
-        </div>
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-4 text-slate-500">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="font-black text-xl tracking-tighter animate-pulse uppercase">Synchronisation des relevés...</p>
       </div>
     )
   }
 
-  return (
-    <div className="flex flex-col gap-5">
+  // Liste unifiée : Master en premier, suivi des Nodes
+  const allDevices = [telemetry.master, ...telemetry.nodes]
 
-      {/* ── Cartes Appareils ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-1 min-w-0">
-          <DeviceCard isMaster
-            name="Compteur Central SBEE"
-            power={telemetry?.master_power?.toLocaleString('fr-FR')}
-            voltage_v={telemetry?.voltage?.toFixed(1)}
-            current_a={telemetry?.current?.toFixed(3)}
-            energy_kwh={telemetry?.billing?.month_kwh?.toFixed(3)}
-            power_factor={telemetry?.power_factor?.toFixed(2)}
-          />
-        </div>
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
-          {safeNodes.map(node => (
-            <div key={node.mac} className="min-w-0">
-              <DeviceCard
-                name={node.name}
-                power={node.power}
-                voltage_v={node.voltage_v?.toFixed(1)}
-                current_a={node.current_a?.toFixed(3)}
-                energy_kwh={node.energy_kwh?.toFixed(3)}
-                power_factor={node.power_factor?.toFixed(2)}
-                isActive={node.is_active}
-              />
-            </div>
+  return (
+    <div className="max-w-7xl mx-auto p-4 lg:p-0 space-y-8">
+      
+      {/* --- SECTION 1 : RELEVÉS INDIVIDUELS (Device Cards) --- */}
+      <div>
+        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-slate-500" /> Relevés en Temps Réel
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {allDevices.map(device => (
+            <DeviceCard key={device.mac} device={device} />
           ))}
         </div>
       </div>
 
-      {/* ── Graphique Live Temps Réel ── */}
-      <div className="bg-slate-900/40 border border-slate-800/50 rounded-2xl p-5 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <Activity className="w-4 h-4 text-blue-400" />
-          <h3 className="text-white font-bold">Puissance en Temps Réel</h3>
-        </div>
-        <p className="text-slate-500 text-xs mb-4">
-          Dernières {liveHistory.length} mesures — mise à jour toutes les 2s
-        </p>
-        <ChartBox height={200}>
-          <ResponsiveContainer width="100%" height="100%" debounce={50}>
-            <LineChart data={liveHistory} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-              <XAxis dataKey="time" stroke="#475569" fontSize={10} tickLine={false} interval="preserveStartEnd" />
-              <YAxis stroke="#475569" fontSize={10} tickFormatter={v => `${v}W`} width={48} />
-              <Tooltip
-                contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12 }}
-                itemStyle={{ color: '#60a5fa' }}
-                formatter={v => [`${v} W`, 'Puissance']}
-              />
-              <Line
-                type="monotone" dataKey="power" name="Puissance"
-                stroke="#3b82f6" strokeWidth={2.5} dot={false}
-                activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartBox>
-      </div>
-
-      {/* ── Audit + Historique ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        <div className="bg-slate-900/40 border border-slate-800/50 rounded-2xl p-5 min-w-0">
-          <h3 className="text-white font-bold mb-0.5">Répartition de la Charge</h3>
-          <p className="text-slate-500 text-xs mb-4">Audit différentiel en temps réel</p>
-          <ChartBox height={240}>
-            <ResponsiveContainer width="100%" height="100%" debounce={50}>
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90}
-                  paddingAngle={4} dataKey="value" stroke="none"
-                  labelLine={false} label={<PieLabel />} animationDuration={400}>
-                  {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                </Pie>
-                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12 }}
-                  itemStyle={{ color: '#fff' }} formatter={v => `${v} W`} />
-                <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </ChartBox>
-        </div>
-
-        <div className="bg-slate-900/40 border border-slate-800/50 rounded-2xl p-5 min-w-0">
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-white font-bold">Statistiques Historiques</h3>
-              <p className="text-slate-500 text-xs">Consommation (kWh) &amp; Coût (FCFA)</p>
+      {/* --- SECTION 2 : CONSOLIDATION (Graphique & Audit) --- */}
+      <div>
+        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2 mt-4">
+          <ShieldAlert className="w-4 h-4 text-slate-500" /> Consolidation & Audit
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* GRAPHIQUE LIVE (Master) */}
+          <div className="lg:col-span-2 p-6 bg-slate-900/60 border border-slate-800 rounded-3xl relative overflow-hidden">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em]">
+                Profil de Charge Global (Master)
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-blue-400">{(telemetry.master.power || 0).toFixed(0)} W</span>
+              </div>
             </div>
-            <div className="flex bg-slate-800/60 rounded-xl p-1 border border-slate-700/40 gap-0.5">
-              {FILTERS.map(f => (
-                <button key={f.label} onClick={() => setFilter(f)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all
-                    ${filter.label === f.label ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
-                  {f.label}
-                </button>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={liveHistory}>
+                  <defs>
+                    <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="time" hide />
+                  <YAxis hide domain={[0, 'dataMax + 500']} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}
+                    itemStyle={{ color: '#3b82f6', fontSize: '14px', fontWeight: '900' }}
+                    labelStyle={{ color: '#94a3b8', fontSize: '10px', textTransform: 'uppercase' }}
+                    formatter={(value) => [`${Math.round(value)} Watts`, 'Puissance']}
+                  />
+                  <Area 
+                    type="monotone" dataKey="power" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPower)" 
+                    isAnimationActive={true} animationDuration={1000}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* AUDIT DIFFERENTIEL */}
+          <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-3xl flex flex-col justify-between">
+            <div>
+              <h3 className="text-xs font-bold text-white flex items-center gap-2 uppercase tracking-[0.2em] mb-2">
+                <Info className="w-4 h-4 text-rose-500" /> Bilan Différentiel
+              </h3>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Répartition instantanée de la puissance totale mesurée par le Master.
+              </p>
+            </div>
+            
+            <div className="h-44 w-full my-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={auditData} innerRadius={55} outerRadius={75} paddingAngle={8} dataKey="value" cornerRadius={4}>
+                    {auditData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
+                    itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}
+                    formatter={(value) => [`${Math.round(value)} W`, '']}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            
+            <div className="space-y-2">
+              {auditData.map(item => (
+                <div key={item.name} className="flex justify-between items-center px-4 py-2.5 bg-slate-950/50 rounded-2xl border border-slate-800/50">
+                  <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }}></div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.name}</span>
+                  </div>
+                  <span className="text-sm font-black text-white">{item.value.toFixed(0)} W</span>
+                </div>
               ))}
             </div>
           </div>
-          <ChartBox height={240}>
-            {histLoading ? (
-              <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">Chargement…</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%" debounce={50}>
-                <BarChart data={historyData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="label" stroke="#475569" fontSize={10} tickLine={false} />
-                  <YAxis yAxisId="l" stroke="#3b82f6" fontSize={10} tickFormatter={v => `${v}`} width={38} />
-                  <YAxis yAxisId="r" orientation="right" stroke="#10b981" fontSize={10}
-                    tickFormatter={v => `${(v/1000).toFixed(0)}k`} width={38} />
-                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12 }}
-                    labelStyle={{ color: '#94a3b8', marginBottom: 4, fontSize: 12 }} />
-                  <Bar yAxisId="l" dataKey="kwh"       name="Énergie (kWh)" fill="#3b82f6" radius={[4,4,0,0]} maxBarSize={28} />
-                  <Bar yAxisId="r" dataKey="cost_fcfa" name="Coût (FCFA)"   fill="#10b981" radius={[4,4,0,0]} opacity={0.8} maxBarSize={28} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </ChartBox>
-        </div>
 
+        </div>
       </div>
     </div>
   )
