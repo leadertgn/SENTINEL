@@ -74,7 +74,7 @@ const DeviceCard = ({ device }) => {
         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
           <Zap className="w-3 h-3" /> Énergie Cumulée
         </span>
-        <span className="text-xs font-black text-white">{(device.kwh_total || 0).toFixed(3)} kWh</span>
+        <span className="text-xs font-black text-white">{((device.kwh_total || 0) * 1000).toFixed(1)} Wh</span>
       </div>
 
       {/* Halo de fond */}
@@ -154,7 +154,7 @@ export default function Dashboard() {
                   />
                   <Area 
                     type="monotone" dataKey="power" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPower)" 
-                    isAnimationActive={false} 
+                    isAnimationActive={true} animationDuration={1000}
                   />
                 </AreaChart>
               </ResponsiveContainer>

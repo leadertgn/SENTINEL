@@ -4,6 +4,7 @@ Service de seed des données initiales :
 - Tranches tarifaires SBEE scalables en base
 """
 from sqlmodel import Session, select
+from sqlalchemy import desc
 from app.models.base import Device, BillingTariff, RoleEnum
 
 # ─── Tranches SBEE (Postpayé Basse Tension) ────────────────────────────────────
@@ -62,7 +63,7 @@ def seed_devices(session: Session):
 def get_active_tariff(kwh: float, session: Session) -> BillingTariff | None:
     """Retourne la tranche applicable en fonction de la conso totale du mois."""
     tariffs = session.exec(
-        select(BillingTariff).order_by(BillingTariff.min_kwh.desc())
+        select(BillingTariff).order_by(desc(BillingTariff.min_kwh))
     ).all()
     for t in tariffs:
         if kwh >= t.min_kwh:
@@ -81,8 +82,8 @@ def calculate_monthly_cost(kwh: float, session: Session) -> dict:
     ).all()
     
     # Abonnement mensuel : 500 FCFA par KVA (On fixe à 5 KVA pour la démo)
-    KVA_SOUSCRIT = 5
-    fixed_premium = 500 * KVA_SOUSCRIT
+    kva_souscrit = 5
+    fixed_premium = 500 * kva_souscrit
     
     if not tariffs:
         return {"energy_cost": 0.0, "fixed_premium": fixed_premium, "total_fcfa": fixed_premium}

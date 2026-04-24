@@ -23,5 +23,6 @@
 #define PUBLISH_INTERVAL_MS   5000    
 #define OFFLINE_INTERVAL_MS   60000   
 #define MQTT_RECONNECT_MS     5000    
+#define WIFI_MAX_RETRIES      20    
 
 #include "secrets.h"

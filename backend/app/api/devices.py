@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
+from sqlalchemy import desc
 from typing import List
+import logging
 from app.core.database import get_session
 from app.models.base import Device, Telemetry, RoleEnum
 from app.core.mqtt_client import send_mqtt_command
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/devices", tags=["Devices"])
 
 @router.get("/", response_model=List[Device])
 def get_devices(session: Session = Depends(get_session)):
@@ -29,7 +33,7 @@ def toggle_device(mac: str, session: Session = Depends(get_session)):
     master = session.exec(select(Device).where(Device.role == RoleEnum.MASTER)).first()
     if master and not device.is_active: # On vérifie si on veut ALLUMER
         last_t = session.exec(
-            select(Telemetry).where(Telemetry.device_id == master.id).order_by(Telemetry.timestamp.desc())
+            select(Telemetry).where(Telemetry.device_id == master.id).order_by(desc(Telemetry.timestamp))
         ).first()
         
         if last_t:

@@ -64,6 +64,7 @@ static void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 void wifi_connect() {
     Serial.printf("📶 Connexion WiFi → SSID : %s\n", WIFI_SSID);
     WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int retries = 0;
@@ -102,12 +103,13 @@ static void mqtt_connect() {
     while (!mqttClient.connected() && WiFi.status() == WL_CONNECTED) {
         Serial.printf("🔌 Connexion MQTT → %s:%d\n", MQTT_BROKER, MQTT_PORT);
         String clientId = "SENTINEL_MASTER_" + s_deviceMac;
+        String willPayload = "{\"state\":\"OFFLINE\",\"mac_address\":\"" + s_deviceMac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
         bool connected = false;
 
         if (strlen(MQTT_USER) > 0) {
-            connected = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
+            connected = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS, s_topicStatus.c_str(), 0, true, willPayload.c_str());
         } else {
-            connected = mqttClient.connect(clientId.c_str());
+            connected = mqttClient.connect(clientId.c_str(), "", "", s_topicStatus.c_str(), 0, true, willPayload.c_str());
         }
 
         if (connected) {
@@ -138,9 +140,7 @@ void mqtt_setup() {
 
 void mqtt_loop() {
     if (WiFi.status() != WL_CONNECTED) {
-        // Tentative de reconnexion WiFi si perdu
-        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-        return; // Hors-ligne, on sort
+        return; // Hors-ligne, auto-reconnect géré en tâche de fond
     }
     if (!mqttClient.connected()) {
         mqtt_connect();
@@ -166,6 +166,10 @@ void publish_telemetry(const SensorData& data, unsigned long timestamp) {
 
     if (!mqttClient.connected()) {
         // HORS-LIGNE : Sauvegarde dans LittleFS
+        if (!LittleFS.exists("/queue.jsonl")) {
+            File initFile = LittleFS.open("/queue.jsonl", FILE_WRITE);
+            if (initFile) initFile.close();
+        }
         File file = LittleFS.open("/queue.jsonl", FILE_APPEND);
         if (file) {
             file.println(payload);

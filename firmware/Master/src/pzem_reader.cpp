@@ -28,10 +28,10 @@ SensorData read_sensor() {
     float dt_h = (s_lastReadMs == 0) ? 0.0f : (now - s_lastReadMs) / 3600000.0f;
     s_lastReadMs = now;
 
-    float sim_voltage = 220.0f + (float)random(-10, 11) / 10.0f;
-    float sim_power   = 1800.0f + (float)random(0, 701); 
-    float sim_pf      = 0.95f  + (float)random(-5, 5) / 100.0f;
-    float sim_freq    = 50.0f  + (float)random(-5, 5) / 100.0f;
+    float sim_voltage = 220.0f + (float)random(-5, 6) / 10.0f; // Variation douce de la tension
+    float sim_power   = 2500.0f + (float)random(-20, 21);      // Charge totale stable à ~2500W
+    float sim_pf      = 0.95f  + (float)random(-2, 3) / 100.0f;
+    float sim_freq    = 50.0f  + (float)random(-2, 3) / 100.0f;
     
     s_simEnergyKwh += (sim_power / 1000.0f) * dt_h;
 

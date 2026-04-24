@@ -1,7 +1,12 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import List
+from fastapi import Depends
+from sqlmodel import Session, select, func
+from datetime import datetime, timedelta, timezone
+from app.core.database import get_session
+from app.models.base import Telemetry
 
-router = APIRouter()
+router = APIRouter(prefix="/api/telemetry", tags=["Telemetry"])
 
 class ConnectionManager:
     def __init__(self):
@@ -19,7 +24,7 @@ class ConnectionManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception:
+            except Exception as e:
                 pass
 
 manager = ConnectionManager()
@@ -33,16 +38,11 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-from fastapi import Depends
-from sqlmodel import Session, select, func
-from datetime import datetime, timedelta
-from app.core.database import get_session
-from app.models.base import Telemetry
 
 @router.get("/history")
 def get_telemetry_history(granularity: str = "day", days: int = 7, session: Session = Depends(get_session)):
     import random
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     history = []
     
@@ -61,7 +61,7 @@ def get_telemetry_history(granularity: str = "day", days: int = 7, session: Sess
         
         if not results or len(results) < 6:
             for i in range(days * 24, -1, -1):
-                dt = datetime.utcnow() - timedelta(hours=i)
+                dt = datetime.now(timezone.utc) - timedelta(hours=i)
                 kwh = 0.8 + random.uniform(-0.3, 0.3)
                 history.append({
                     "period": dt.strftime("%Y-%m-%dT%H:00"),
@@ -72,13 +72,14 @@ def get_telemetry_history(granularity: str = "day", days: int = 7, session: Sess
                 })
         else:
             for row in results:
-                kwh = row.total_kwh or 0.0
+                period, total_kwh, avg_power = row
+                kwh = total_kwh or 0.0
                 history.append({
-                    "period": row.period,
-                    "label": row.period[11:16] + "h",
+                    "period": period,
+                    "label": period[11:16] + "h",
                     "kwh": round(kwh, 2),
                     "cost_fcfa": round(kwh * 130.0, 0),
-                    "avg_power_w": round(row.avg_power or 0, 0)
+                    "avg_power_w": round(avg_power or 0, 0)
                 })
     else:
         # Agrégation par jour (7J ou 30J)
@@ -96,7 +97,7 @@ def get_telemetry_history(granularity: str = "day", days: int = 7, session: Sess
         if not results or len(results) < days // 2:
             base_kwh = 15.0
             for i in range(days, -1, -1):
-                dt = datetime.utcnow() - timedelta(days=i)
+                dt = datetime.now(timezone.utc) - timedelta(days=i)
                 kwh = base_kwh + random.uniform(-2.0, 2.0)
                 history.append({
                     "period": dt.strftime("%Y-%m-%d"),
@@ -107,14 +108,15 @@ def get_telemetry_history(granularity: str = "day", days: int = 7, session: Sess
                 })
         else:
             for row in results:
-                kwh = row.total_kwh or 0.0
-                dt = datetime.strptime(row.period, "%Y-%m-%d")
+                period, total_kwh, avg_power = row
+                kwh = total_kwh or 0.0
+                dt = datetime.strptime(period, "%Y-%m-%d")
                 history.append({
-                    "period": row.period,
+                    "period": period,
                     "label": dt.strftime("%d/%m"),
                     "kwh": round(kwh, 2),
                     "cost_fcfa": round(kwh * 130.0, 0),
-                    "avg_power_w": round(row.avg_power or 0, 0)
+                    "avg_power_w": round(avg_power or 0, 0)
                 })
     
     return history

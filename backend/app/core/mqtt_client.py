@@ -3,8 +3,9 @@ import logging
 import threading
 import asyncio
 import paho.mqtt.client as mqtt
-from datetime import datetime
-from sqlmodel import Session, select, func
+from datetime import datetime, timezone
+from sqlmodel import Session, select
+from sqlalchemy import desc
 from app.core.database import engine
 from app.core.config import settings
 from app.models.base import Telemetry, Device, StatusEnum, RoleEnum
@@ -12,7 +13,8 @@ from app.api.telemetry import manager
 from app.services.billing import calculate_monthly_cost, get_active_tariff
 
 logger = logging.getLogger("mqtt")
-_main_loop = None
+_main_loop: asyncio.AbstractEventLoop | None = None
+_mqtt_client: mqtt.Client | None = None
 
 def _validate_and_register(session: Session, payload: dict) -> Device | None:
     mac = payload.get("mac_address")
@@ -42,17 +44,18 @@ def _validate_and_register(session: Session, payload: dict) -> Device | None:
         session.add(new_device)
         session.commit()
         session.refresh(new_device)
-        print(f"✨ MQTT : Nouvel appareil : {new_device.name} ({new_device.role})")
+        logger.info(f"✨ MQTT : Nouvel appareil : {new_device.name} ({new_device.role.value})")
         return new_device
 
     return None
 
-def on_connect(client, userdata, flags, rc):
-    client.subscribe("sbee/devices/+/data")
-    client.subscribe("sbee/devices/+/status")
+def on_connect(_client, _userdata, _flags, _rc):
+    _client.subscribe("sbee/devices/+/data")
+    _client.subscribe("sbee/devices/+/status")
 
-def on_message(client, userdata, msg):
+def on_message(_client, _userdata, msg):
     try:
+        logger.info(f"📥 MQTT Rx : {msg.topic}")
         payload = json.loads(msg.payload.decode())
         with Session(engine) as session:
             device = _validate_and_register(session, payload)
@@ -61,19 +64,20 @@ def on_message(client, userdata, msg):
             if "/data" in msg.topic:
                 new_kwh = float(payload.get("energy_kwh", 0.0))
                 last_telemetry = session.exec(
-                    select(Telemetry).where(Telemetry.device_id == device.id).order_by(Telemetry.timestamp.desc())
+                    select(Telemetry).where(Telemetry.device_id == device.id).order_by(desc(Telemetry.timestamp))
                 ).first()
                 delta_wh = (new_kwh - last_telemetry.energy_kwh) * 1000.0 if last_telemetry and new_kwh >= last_telemetry.energy_kwh else 0.0
 
                 # ── HORODATAGE NTP ──
-                # Si le node envoie un timestamp (via NTP), on l'utilise (historisation hors-ligne).
-                # Sinon, on prend l'heure du serveur.
+                # Si le node envoie un timestamp valide (NTP réussi), on l'utilise.
+                # Si le NTP a échoué (pas d'internet), l'ESP envoie une valeur très basse (ex: 3600).
+                # 1600000000 correspond environ à l'année 2020.
                 timestamp_val = payload.get("timestamp")
-                if timestamp_val and isinstance(timestamp_val, (int, float)):
-                    # L'ESP envoie généralement l'epoch UNIX en secondes
-                    dt_timestamp = datetime.fromtimestamp(timestamp_val)
+                if timestamp_val and isinstance(timestamp_val, (int, float)) and timestamp_val > 1600000000:
+                    dt_timestamp = datetime.fromtimestamp(timestamp_val, tz=timezone.utc)
                 else:
-                    dt_timestamp = datetime.utcnow()
+                    logger.info(f"⚠️ Timestamp invalide ({timestamp_val}) détecté pour {device.mac_address}. Fallback à l'heure du serveur.")
+                    dt_timestamp = datetime.now(timezone.utc)
 
                 telemetry = Telemetry(
                     device_id=device.id,
@@ -93,8 +97,22 @@ def on_message(client, userdata, msg):
 
                 if device.role == RoleEnum.MASTER:
                     _broadcast_unified_snapshot(session)
+
+            elif "/status" in msg.topic:
+                state_str = payload.get("state", "ONLINE").upper()
+                if state_str == "OFFLINE":
+                    device.status = StatusEnum.OFFLINE
+                    logger.info(f"🔴 MQTT : Appareil {device.mac_address} hors-ligne (LWT).")
+                else:
+                    device.status = StatusEnum.ONLINE
+                
+                device.is_active = payload.get("is_active", device.is_active)
+                session.add(device)
+                session.commit()
+                _broadcast_unified_snapshot(session)
+
     except Exception as e:
-        print(f"💥 MQTT Error: {e}")
+        logger.error(f"💥 MQTT Error: {e}", exc_info=True)
 
 def _broadcast_unified_snapshot(session: Session):
     global _main_loop
@@ -102,7 +120,7 @@ def _broadcast_unified_snapshot(session: Session):
         master = session.exec(select(Device).where(Device.role == RoleEnum.MASTER)).first()
         if not master: return
 
-        last_m = session.exec(select(Telemetry).where(Telemetry.device_id == master.id).order_by(Telemetry.timestamp.desc())).first()
+        last_m = session.exec(select(Telemetry).where(Telemetry.device_id == master.id).order_by(desc(Telemetry.timestamp))).first()
         if not last_m: return
 
         # CALCUL DU COUT DYNAMIQUE (POSTPAYÉ)
@@ -113,7 +131,7 @@ def _broadcast_unified_snapshot(session: Session):
         nodes_data = []
         total_p_nodes = 0
         for n in nodes:
-            last_n = session.exec(select(Telemetry).where(Telemetry.device_id == n.id).order_by(Telemetry.timestamp.desc())).first()
+            last_n = session.exec(select(Telemetry).where(Telemetry.device_id == n.id).order_by(desc(Telemetry.timestamp))).first()
             p = last_n.power_w if last_n else 0
             nodes_data.append({
                 "name": n.name, 
@@ -159,9 +177,10 @@ def _broadcast_unified_snapshot(session: Session):
         }
 
         if _main_loop:
+            logger.info("📡 WebSocket : Diffusion d'une mise à jour (Snapshot)")
             asyncio.run_coroutine_threadsafe(manager.broadcast(snapshot), _main_loop)
     except Exception as e:
-        print(f"⚠️ Broadcast Error: {e}")
+        logger.error(f"⚠️ Broadcast Error: {e}")
 
 def send_mqtt_command(mac: str, action: str):
     global _mqtt_client
@@ -170,7 +189,7 @@ def send_mqtt_command(mac: str, action: str):
         return True
     return False
 
-_mqtt_client = None
+
 
 def start_mqtt_client():
     global _main_loop, _mqtt_client
@@ -187,5 +206,6 @@ def start_mqtt_client():
     try:
         client.connect(settings.MQTT_BROKER, settings.MQTT_PORT, 60)
         threading.Thread(target=client.loop_forever, daemon=True).start()
+        logger.info("✅ Client MQTT Backend connecté avec succès !")
     except Exception as e:
-        print(f"❌ MQTT : {e}")
+        logger.error(f"❌ Erreur connexion MQTT : {e}")

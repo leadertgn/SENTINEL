@@ -30,8 +30,8 @@ SensorData read_sensor(bool relayState) {
     float dt_h = (s_lastReadMs == 0) ? 0.0f : (now - s_lastReadMs) / 3600000.0f;
     s_lastReadMs = now;
 
-    float v = 220.0f + (float)random(-10, 11) / 10.0f;
-    float p = relayState ? (800.0f + (float)random(0, 401)) : 0.0f;
+    float v = 220.0f + (float)random(-5, 6) / 10.0f; // Variation douce de la tension
+    float p = relayState ? (1000.0f + (float)random(-10, 11)) : 0.0f; // Charge stable à ~1000W
     
     s_simEnergyKwh += (p / 1000.0f) * dt_h;
 

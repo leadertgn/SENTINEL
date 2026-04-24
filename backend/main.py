@@ -1,5 +1,3 @@
-import asyncio
-
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,12 +5,11 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import create_db_and_tables
 from app.api import telemetry, devices
-from app.services.mock_hardware import simulate_hardware_data
 from app.core.mqtt_client import start_mqtt_client
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.base import BillingTariff
-
+from fastapi import Depends
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,12 +36,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
-app.include_router(telemetry.router, prefix="/api/telemetry", tags=["Telemetry"])
+app.include_router(devices.router)
+app.include_router(telemetry.router)
 
 # Route tariffs (scalable depuis la DB)
-from fastapi import Depends
-
 @app.get("/api/tariffs")
 def get_tariffs(session: Session = Depends(get_session)):
     return session.exec(select(BillingTariff).order_by(BillingTariff.min_kwh)).all()

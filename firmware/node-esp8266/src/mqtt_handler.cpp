@@ -73,6 +73,8 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 }
 
 void mqtt_setup() {
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     
     int retries = 0;
@@ -87,17 +89,21 @@ void mqtt_setup() {
 
     mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
     mqttClient.setCallback(onMqttMessage);
+    mqttClient.setBufferSize(512);
 }
 
 void mqtt_loop() {
     if (WiFi.status() != WL_CONNECTED) {
-        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         return;
     }
 
     if (!mqttClient.connected()) {
         Serial.printf("🔌 Tentative connexion MQTT Node (%s)...\n", s_mac.c_str());
-        if (mqttClient.connect(s_mac.c_str())) {
+        
+        String willTopic = "sbee/devices/" + s_mac + "/status";
+        String willPayload = "{\"state\":\"OFFLINE\",\"mac_address\":\"" + s_mac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
+        
+        if (mqttClient.connect(s_mac.c_str(), "", "", willTopic.c_str(), 0, true, willPayload.c_str())) {
             Serial.println("✅ MQTT Connecté");
             mqttClient.subscribe(("sbee/devices/" + s_mac + "/cmd").c_str());
             flush_queue(); // Vidage dès la connexion réussie
@@ -109,6 +115,12 @@ void mqtt_loop() {
 }
 
 void publish_telemetry(const SensorData& data, unsigned long timestamp) {
+    // ── Construction du payload JSON ──────────────────────────────
+    // Contrat strict avec le backend SENTINEL (mqtt_client.py)
+    // Champs attendus : mac_address, secret_key, role, is_active, timestamp,
+    //                   voltage_v, current_a, power_w, energy_kwh, frequency_hz, pf
+    // Le calcul du delta d'énergie (energy_delta_wh) est directement délégué
+    // au Backend pour soulager la mémoire RAM limitée de l'ESP8266.
     JsonDocument doc;
     doc["mac_address"] = s_mac;
     doc["secret_key"]  = DEVICE_SECRET;

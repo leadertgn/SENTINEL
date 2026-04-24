@@ -86,8 +86,8 @@ export default function Billing() {
                     <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
                         <TrendingUp className="w-4 h-4 text-emerald-500" /> Analyse de Tranche Sociale
                     </h3>
-                    <span className="text-[10px] font-bold text-slate-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 uppercase tracking-widest">
-                        {currentKwh.toFixed(2)} kWh consommés
+                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/30 px-3 py-1.5 rounded-xl border border-emerald-900/50 uppercase tracking-widest">
+                        {(currentKwh * 1000).toFixed(1)} Wh consommés
                     </span>
                 </div>
 
