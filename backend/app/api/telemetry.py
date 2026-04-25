@@ -30,8 +30,18 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 @router.websocket("/ws/telemetry")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, session: Session = Depends(get_session)):
     await manager.connect(websocket)
+    
+    # Envoi immédiat de l'état actuel au nouveau client
+    try:
+        from app.core.mqtt_client import _build_snapshot
+        snapshot = _build_snapshot(session)
+        if snapshot:
+            await websocket.send_json(snapshot)
+    except Exception as e:
+        pass
+
     try:
         while True:
             await websocket.receive_text()
