@@ -13,16 +13,48 @@ from fastapi import Depends
 import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+import asyncio
+from datetime import datetime, timezone, timedelta
+from app.core.database import engine
+from app.models.base import Device, Telemetry, StatusEnum
+from sqlalchemy import desc
+
+async def device_watchdog():
+    while True:
+        await asyncio.sleep(60) # Vérification toutes les minutes
+        try:
+            with Session(engine) as session:
+                devices = session.exec(select(Device).where(Device.status == StatusEnum.ONLINE)).all()
+                changed = False
+                for d in devices:
+                    last_t = session.exec(select(Telemetry).where(Telemetry.device_id == d.id).order_by(desc(Telemetry.timestamp))).first()
+                    if last_t:
+                        if datetime.now(timezone.utc) - last_t.timestamp > timedelta(minutes=2):
+                            d.status = StatusEnum.OFFLINE
+                            d.is_active = False # On suppose coupé par sécurité
+                            session.add(d)
+                            changed = True
+                            logging.getLogger("watchdog").info(f"🔴 Watchdog : Appareil {d.mac_address} déclaré HORS-LIGNE (Timeout 2min).")
+                
+                if changed:
+                    session.commit()
+                    from app.core.mqtt_client import _broadcast_unified_snapshot
+                    _broadcast_unified_snapshot(session)
+        except Exception as e:
+            logging.getLogger("watchdog").error(f"Watchdog error: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
     # Démarrage du client MQTT (vrai matériel ou simulation au même niveau)
     start_mqtt_client()
+    
+    # Lancement du chien de garde en tâche de fond
+    asyncio.create_task(device_watchdog())
+    
     if settings.SIMULATION_MODE:
-        import logging
         logging.getLogger("main").info("🔵 MODE SIMULATION firmware attendu via MQTT")
     else:
-        import logging
         logging.getLogger("main").info("🟢 MODE PRODUCTION — En attente des trames MQTT réelles")
     yield
 

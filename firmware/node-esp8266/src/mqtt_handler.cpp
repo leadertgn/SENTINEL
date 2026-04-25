@@ -85,8 +85,16 @@ void mqtt_setup() {
     int retries = 0;
     while (WiFi.status() != WL_CONNECTED) { 
         delay(500); 
+        Serial.print(".");
         retries++;
-        if (retries >= WIFI_MAX_RETRIES) break; // Mode hors-ligne
+        if (retries >= WIFI_MAX_RETRIES) {
+            Serial.println("\n❌ WiFi timeout — mode hors-ligne activé...");
+            break; // Mode hors-ligne
+        }
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf("\n✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
     }
     
     s_mac = WiFi.macAddress();
