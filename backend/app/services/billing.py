@@ -74,19 +74,14 @@ def get_active_tariff(kwh: float, session: Session) -> BillingTariff | None:
 def calculate_monthly_cost(kwh: float, session: Session) -> dict:
     """
     Calcul SBEE progressif par paliers (Postpayé).
-    Inclus la prime fixe d'abonnement (500 FCFA / KVA).
-    Hypothèse pour étude : 5 KVA.
+    Uniquement basé sur l'énergie réelle consommée (sans frais fixes d'abonnement).
     """
     tariffs = session.exec(
         select(BillingTariff).order_by(BillingTariff.min_kwh)
     ).all()
     
-    # Abonnement mensuel : 500 FCFA par KVA (On fixe à 5 KVA pour la démo)
-    kva_souscrit = 5
-    fixed_premium = 500 * kva_souscrit
-    
     if not tariffs:
-        return {"energy_cost": 0.0, "fixed_premium": fixed_premium, "total_fcfa": fixed_premium}
+        return {"energy_cost": 0.0, "fixed_premium": 0.0, "total_fcfa": 0.0}
     
     energy_cost = 0.0
     remaining_kwh = kwh
@@ -104,10 +99,8 @@ def calculate_monthly_cost(kwh: float, session: Session) -> dict:
         energy_cost += kwh_in_this_tranche * tariff.price_per_kwh
         remaining_kwh -= kwh_in_this_tranche
     
-    total_cost = energy_cost + fixed_premium
-    
     return {
         "energy_cost": round(energy_cost, 2),
-        "fixed_premium": fixed_premium,
-        "total_fcfa": round(total_cost, 2)
+        "fixed_premium": 0.0,  # Conservé dans la structure pour compatibilité
+        "total_fcfa": round(energy_cost, 2)
     }

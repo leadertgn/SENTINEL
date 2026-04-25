@@ -180,15 +180,18 @@ def get_billing_report(granularity: str = "month", session: Session = Depends(ge
         elif dev.role == RoleEnum.NODE:
             report_dict[period]["nodes"][dev.name] = round(consumption or 0.0, 3)
             
-    tariff = session.exec(select(BillingTariff)).first()
-    price_per_kwh = tariff.price_per_kwh if tariff else 130.0
+    from app.services.billing import calculate_monthly_cost
     
     result = []
     for period, data in report_dict.items():
         master_kwh = data["master"]
         nodes_sum = sum(data["nodes"].values())
         data["unknown"] = round(max(0, master_kwh - nodes_sum), 3)
-        data["cost_fcfa"] = round(master_kwh * price_per_kwh, 0)
+        
+        # Calcul du coût exact basé sur les tranches (sans frais fixes)
+        billing_calc = calculate_monthly_cost(master_kwh, session)
+        data["cost_fcfa"] = int(billing_calc["total_fcfa"])
+        
         result.append(data)
         
     node_names = [d.name for d in devices if d.role == RoleEnum.NODE]

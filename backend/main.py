@@ -46,6 +46,15 @@ async def device_watchdog():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
+    
+    # Injection des données initiales (Tarifs SBEE)
+    try:
+        from app.services.billing import seed_tariffs
+        with Session(engine) as session:
+            seed_tariffs(session)
+    except Exception as e:
+        logging.getLogger("main").error(f"Erreur lors du seeding: {e}")
+
     # Démarrage du client MQTT (vrai matériel ou simulation au même niveau)
     start_mqtt_client()
     
