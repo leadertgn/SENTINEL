@@ -39,7 +39,7 @@ def _validate_and_register(session: Session, payload: dict) -> Device | None:
             role=role,
             secret_key=secret,
             status=StatusEnum.ONLINE,
-            is_active=True
+            is_active=payload.get("is_active", False)
         )
         session.add(new_device)
         session.commit()
@@ -92,6 +92,8 @@ def on_message(_client, _userdata, msg):
                 )
                 session.add(telemetry)
                 device.status = StatusEnum.ONLINE
+                if "is_active" in payload:
+                    device.is_active = payload.get("is_active")
                 session.commit()
 
                 _broadcast_unified_snapshot(session)

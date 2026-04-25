@@ -123,46 +123,10 @@ export default function Dashboard() {
         <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2 mt-4">
           <ShieldAlert className="w-4 h-4 text-slate-500" /> Consolidation & Audit
         </h2>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* GRAPHIQUE LIVE (Master) */}
-          <div className="lg:col-span-2 p-6 bg-slate-900/60 border border-slate-800 rounded-3xl relative overflow-hidden">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em]">
-                Profil de Charge Global (Master)
-              </h3>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-blue-400">{(telemetry.master.power || 0).toFixed(0)} W</span>
-              </div>
-            </div>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={liveHistory}>
-                  <defs>
-                    <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis hide domain={[0, 'dataMax + 500']} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}
-                    itemStyle={{ color: '#3b82f6', fontSize: '14px', fontWeight: '900' }}
-                    labelStyle={{ color: '#94a3b8', fontSize: '10px', textTransform: 'uppercase' }}
-                    formatter={(value) => [`${Math.round(value)} Watts`, 'Puissance']}
-                  />
-                  <Area 
-                    type="monotone" dataKey="power" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPower)" 
-                    isAnimationActive={true} animationDuration={1000}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+        <div className="flex justify-center">
 
           {/* AUDIT DIFFERENTIEL */}
-          <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-3xl flex flex-col justify-between">
+          <div className="w-full max-w-lg p-8 bg-slate-900/60 border border-slate-800 rounded-3xl flex flex-col justify-between shadow-2xl">
             <div>
               <h3 className="text-xs font-bold text-white flex items-center gap-2 uppercase tracking-[0.2em] mb-2">
                 <Info className="w-4 h-4 text-rose-500" /> Bilan Différentiel

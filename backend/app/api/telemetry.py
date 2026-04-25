@@ -120,3 +120,67 @@ def get_telemetry_history(granularity: str = "day", days: int = 7, session: Sess
                 })
     
     return history
+
+@router.get("/billing-report")
+def get_billing_report(granularity: str = "month", session: Session = Depends(get_session)):
+    from app.models.base import Device, RoleEnum, BillingTariff
+    
+    if granularity == "day":
+        period_expr = func.strftime('%Y-%m-%d', Telemetry.timestamp)
+    elif granularity == "week":
+        period_expr = func.strftime('%Y-%W', Telemetry.timestamp)
+    else: # month
+        period_expr = func.strftime('%Y-%m', Telemetry.timestamp)
+        
+    query = session.exec(
+        select(
+            period_expr.label("period"),
+            Telemetry.device_id,
+            (func.max(Telemetry.energy_kwh) - func.min(Telemetry.energy_kwh)).label("consumption")
+        )
+        .group_by(period_expr, Telemetry.device_id)
+        .order_by(period_expr)
+    ).all()
+    
+    devices = session.exec(select(Device)).all()
+    devices_dict = {d.id: d for d in devices}
+    
+    report_dict = {}
+    for row in query:
+        period, device_id, consumption = row
+        if period not in report_dict:
+            report_dict[period] = {
+                "period": period,
+                "master": 0.0,
+                "nodes": {},
+                "unknown": 0.0,
+                "cost_fcfa": 0.0
+            }
+            
+        dev = devices_dict.get(device_id)
+        if not dev: continue
+        
+        # S'assurer d'initialiser les clés pour tous les nodes connus
+        for d in devices:
+            if d.role == RoleEnum.NODE and d.name not in report_dict[period]["nodes"]:
+                report_dict[period]["nodes"][d.name] = 0.0
+                
+        if dev.role == RoleEnum.MASTER:
+            report_dict[period]["master"] = round(consumption or 0.0, 3)
+        elif dev.role == RoleEnum.NODE:
+            report_dict[period]["nodes"][dev.name] = round(consumption or 0.0, 3)
+            
+    tariff = session.exec(select(BillingTariff)).first()
+    price_per_kwh = tariff.price_per_kwh if tariff else 130.0
+    
+    result = []
+    for period, data in report_dict.items():
+        master_kwh = data["master"]
+        nodes_sum = sum(data["nodes"].values())
+        data["unknown"] = round(max(0, master_kwh - nodes_sum), 3)
+        data["cost_fcfa"] = round(master_kwh * price_per_kwh, 0)
+        result.append(data)
+        
+    node_names = [d.name for d in devices if d.role == RoleEnum.NODE]
+    
+    return {"data": result, "node_names": node_names}
