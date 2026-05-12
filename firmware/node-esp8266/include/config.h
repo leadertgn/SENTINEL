@@ -19,6 +19,10 @@
 #define RELAY_ON       HIGH
 #define RELAY_OFF      LOW
 
+// ─── LEDs de Diagnostic ──────────────────────────────────────────
+#define LED_NETWORK_PIN 13 // D7
+#define LED_ACTIVITY_PIN 4  // D2
+
 // ─── Intervalles ────────────────────────────────────────────────
 #define PUBLISH_INTERVAL_MS   5000    
 #define OFFLINE_INTERVAL_MS   60000   
