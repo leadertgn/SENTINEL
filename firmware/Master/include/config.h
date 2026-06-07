@@ -21,6 +21,10 @@
 #define LCD_COLS       16
 #define LCD_ROWS       2
 
+// ─── LEDs de Diagnostic ──────────────────────────────────────────
+#define LED_NETWORK_PIN 2
+#define LED_ACTIVITY_PIN 4
+
 // ─── Intervalles de temps ────────────────────────────────────────
 #define PUBLISH_INTERVAL_MS   5000    
 #define OFFLINE_INTERVAL_MS   60000   // 60s pour soulager la Flash en hors-ligne

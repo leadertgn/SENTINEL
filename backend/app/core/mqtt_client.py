@@ -39,7 +39,7 @@ def _validate_and_register(session: Session, payload: dict) -> Device | None:
             role=role,
             secret_key=secret,
             status=StatusEnum.ONLINE,
-            is_active=True
+            is_active=payload.get("is_active", False)
         )
         session.add(new_device)
         session.commit()
@@ -92,6 +92,8 @@ def on_message(_client, _userdata, msg):
                 )
                 session.add(telemetry)
                 device.status = StatusEnum.ONLINE
+                if "is_active" in payload:
+                    device.is_active = payload.get("is_active")
                 session.commit()
 
                 _broadcast_unified_snapshot(session)
@@ -112,67 +114,71 @@ def on_message(_client, _userdata, msg):
     except Exception as e:
         logger.error(f"💥 MQTT Error: {e}", exc_info=True)
 
+def _build_snapshot(session: Session):
+    master = session.exec(select(Device).where(Device.role == RoleEnum.MASTER)).first()
+    if not master: return None
+
+    last_m = session.exec(select(Telemetry).where(Telemetry.device_id == master.id).order_by(desc(Telemetry.timestamp))).first()
+    if not last_m: return None
+
+    # CALCUL DU COUT DYNAMIQUE (POSTPAYÉ)
+    tariff = get_active_tariff(last_m.energy_kwh, session)
+    billing_data = calculate_monthly_cost(last_m.energy_kwh, session)
+
+    nodes = session.exec(select(Device).where(Device.role == RoleEnum.NODE)).all()
+    nodes_data = []
+    total_p_nodes = 0
+    for n in nodes:
+        last_n = session.exec(select(Telemetry).where(Telemetry.device_id == n.id).order_by(desc(Telemetry.timestamp))).first()
+        p = last_n.power_w if last_n else 0
+        nodes_data.append({
+            "name": n.name, 
+            "mac": n.mac_address, 
+            "role": n.role,
+            "power": p,
+            "voltage": last_n.voltage_v if last_n else 0,
+            "current": last_n.current_a if last_n else 0,
+            "kwh_total": last_n.energy_kwh if last_n else 0,
+            "power_factor": last_n.power_factor if last_n else 0,
+            "frequency_hz": last_n.frequency_hz if last_n else 0,
+            "energy_delta_wh": last_n.energy_delta_wh if last_n else 0,
+            "is_active": n.is_active, 
+            "status": n.status
+        })
+        total_p_nodes += p
+
+    return {
+        "type": "TELEMETRY_UPDATE",
+        "timestamp": last_m.timestamp.isoformat(),
+        "master": {
+            "name": master.name,
+            "mac": master.mac_address,
+            "role": master.role,
+            "status": master.status,
+            "power": last_m.power_w,
+            "voltage": last_m.voltage_v,
+            "current": last_m.current_a,
+            "kwh_total": last_m.energy_kwh,
+            "energy_delta_wh": last_m.energy_delta_wh,
+            "power_factor": last_m.power_factor,
+            "frequency_hz": last_m.frequency_hz
+        },
+        "nodes": nodes_data,
+        "audit": {"unknown_w": max(0, last_m.power_w - total_p_nodes)},
+        "billing": {
+            "total_fcfa": int(billing_data["total_fcfa"]), 
+            "energy_cost": int(billing_data["energy_cost"]),
+            "fixed_premium": int(billing_data["fixed_premium"]),
+            "active_tariff": tariff.name if tariff else "Standard", 
+            "price_per_kwh": tariff.price_per_kwh if tariff else 88
+        }
+    }
+
 def _broadcast_unified_snapshot(session: Session):
     global _main_loop
     try:
-        master = session.exec(select(Device).where(Device.role == RoleEnum.MASTER)).first()
-        if not master: return
-
-        last_m = session.exec(select(Telemetry).where(Telemetry.device_id == master.id).order_by(desc(Telemetry.timestamp))).first()
-        if not last_m: return
-
-        # CALCUL DU COUT DYNAMIQUE (POSTPAYÉ)
-        tariff = get_active_tariff(last_m.energy_kwh, session)
-        billing_data = calculate_monthly_cost(last_m.energy_kwh, session)
-
-        nodes = session.exec(select(Device).where(Device.role == RoleEnum.NODE)).all()
-        nodes_data = []
-        total_p_nodes = 0
-        for n in nodes:
-            last_n = session.exec(select(Telemetry).where(Telemetry.device_id == n.id).order_by(desc(Telemetry.timestamp))).first()
-            p = last_n.power_w if last_n else 0
-            nodes_data.append({
-                "name": n.name, 
-                "mac": n.mac_address, 
-                "role": n.role,
-                "power": p,
-                "voltage": last_n.voltage_v if last_n else 0,
-                "current": last_n.current_a if last_n else 0,
-                "kwh_total": last_n.energy_kwh if last_n else 0,
-                "power_factor": last_n.power_factor if last_n else 0,
-                "frequency_hz": last_n.frequency_hz if last_n else 0,
-                "energy_delta_wh": last_n.energy_delta_wh if last_n else 0,
-                "is_active": n.is_active, 
-                "status": n.status
-            })
-            total_p_nodes += p
-
-        snapshot = {
-            "type": "TELEMETRY_UPDATE",
-            "timestamp": last_m.timestamp.isoformat(),
-            "master": {
-                "name": master.name,
-                "mac": master.mac_address,
-                "role": master.role,
-                "status": master.status,
-                "power": last_m.power_w,
-                "voltage": last_m.voltage_v,
-                "current": last_m.current_a,
-                "kwh_total": last_m.energy_kwh,
-                "energy_delta_wh": last_m.energy_delta_wh,
-                "power_factor": last_m.power_factor,
-                "frequency_hz": last_m.frequency_hz
-            },
-            "nodes": nodes_data,
-            "audit": {"unknown_w": max(0, last_m.power_w - total_p_nodes)},
-            "billing": {
-                "total_fcfa": int(billing_data["total_fcfa"]), 
-                "energy_cost": int(billing_data["energy_cost"]),
-                "fixed_premium": int(billing_data["fixed_premium"]),
-                "active_tariff": tariff.name if tariff else "Standard", 
-                "price_per_kwh": tariff.price_per_kwh if tariff else 88
-            }
-        }
+        snapshot = _build_snapshot(session)
+        if not snapshot: return
 
         if _main_loop:
             logger.info("📡 WebSocket : Diffusion d'une mise à jour (Snapshot)")
