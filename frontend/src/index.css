@@ -1,11 +1,41 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #1d4ed8;
-  --color-background: #0f172a;
+  --color-primary: #1e40af;
+  --color-background: #f8fafc;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
 body {
-  background-color: var(--color-background);
-  color: #f8fafc;
+  background-color: #f1f5f9;
+  color: #1e293b;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Typographie académique */
+h1, h2, h3, h4 {
+  font-family: 'Georgia', serif;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+/* Scrollbar discrète */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Table académique */
+table { border-collapse: collapse; width: 100%; }
+thead { background-color: #1e3a8a; color: #ffffff; }
+thead th { padding: 10px 14px; font-family: 'Georgia', serif; font-size: 13px; text-align: left; }
+tbody tr { border-bottom: 1px solid #e2e8f0; }
+tbody tr:nth-child(even) { background-color: #f8fafc; }
+tbody tr:hover { background-color: #eff6ff; }
+tbody td { padding: 9px 14px; font-size: 13px; color: #334155; }

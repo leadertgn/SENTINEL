@@ -1,173 +1,182 @@
 import React, { useMemo } from 'react'
 import { useTelemetryStore } from '../store/useTelemetryStore'
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from 'recharts'
-import { Activity, Info, Zap, ShieldAlert } from 'lucide-react'
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
+import { Activity, Zap, ShieldAlert } from 'lucide-react'
 
-// --- COMPOSANT : CARTE APPAREIL (Device Card) ---
+/* ── Carte appareil ── */
 const DeviceCard = ({ device }) => {
   const isMaster = device.role === 'MASTER'
   const isOnline = device.status === 'ONLINE'
-  
-  // Couleurs conditionnelles
-  const themeColor = isMaster ? 'blue' : 'emerald'
-  const bgGradient = isMaster ? 'from-blue-900/20 to-slate-900/40' : 'from-emerald-900/10 to-slate-900/40'
-  const borderColor = isMaster ? 'border-blue-500/20' : 'border-slate-800/50'
 
   return (
-    <div className={`p-6 rounded-3xl border bg-gradient-to-br ${bgGradient} ${borderColor} shadow-lg backdrop-blur-sm relative overflow-hidden group hover:border-${themeColor}-500/40 transition-colors duration-300`}>
-      
-      {/* --- En-tête de la carte --- */}
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-xl font-black text-white tracking-tight">{device.name}</h3>
-            {isMaster && (
-              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest bg-${themeColor}-500/20 text-${themeColor}-400 border border-${themeColor}-500/30`}>
-                Général
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] text-slate-500 font-mono bg-slate-950/50 px-2 py-0.5 rounded border border-slate-800">
-            {device.mac}
+    <div className={`bg-white rounded-xl border shadow-sm overflow-hidden
+      ${isMaster ? 'border-blue-300' : 'border-slate-200'}`}>
+
+      {/* En-tête colorée */}
+      <div className={`px-5 py-3 flex items-center justify-between
+        ${isMaster ? 'bg-blue-800 text-white' : 'bg-slate-700 text-white'}`}>
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-sm">{device.name}</span>
+          {isMaster && (
+            <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded uppercase tracking-wider">
+              Compteur général
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="relative flex h-2 w-2">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60
+              ${isOnline ? 'bg-green-300' : 'bg-red-300'}`}></span>
+            <span className={`relative inline-flex rounded-full h-2 w-2
+              ${isOnline ? 'bg-green-400' : 'bg-red-400'}`}></span>
+          </span>
+          <span className="text-[10px] font-medium">{isOnline ? 'En ligne' : 'Hors ligne'}</span>
+        </div>
+      </div>
+
+      {/* Corps */}
+      <div className="p-5">
+        {/* Puissance principale */}
+        <div className="flex items-end gap-1 mb-4">
+          <span className={`text-4xl font-bold ${isMaster ? 'text-blue-800' : 'text-slate-700'}`}>
+            {(device.power || 0).toFixed(0)}
+          </span>
+          <span className="text-sm text-slate-500 mb-1">W</span>
+        </div>
+
+        {/* Métriques secondaires */}
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          {[
+            { label: 'Tension', value: `${(device.voltage || 0).toFixed(1)} V` },
+            { label: 'Courant', value: `${(device.current || 0).toFixed(2)} A` },
+            { label: 'Cos φ', value: (device.power_factor || 0).toFixed(2) },
+            { label: 'Fréquence', value: `${(device.frequency_hz || 0).toFixed(1)} Hz` },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">{label}</p>
+              <p className="font-bold text-slate-800 text-sm">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Énergie cumulée */}
+        <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+          <span className="flex items-center gap-1">
+            <Zap className="w-3 h-3" /> Énergie cumulée
+          </span>
+          <span className="font-bold text-slate-700">
+            {((device.kwh_total || 0) * 1000).toFixed(1)} Wh
           </span>
         </div>
 
-        {/* Indicateur de statut */}
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-950/80 border border-slate-800">
-          <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? `bg-${themeColor}-500 shadow-[0_0_8px_currentColor] text-${themeColor}-500` : 'bg-rose-500'}`}></div>
-          <span className={`text-[9px] font-bold uppercase tracking-widest ${isOnline ? `text-${themeColor}-400` : 'text-rose-500'}`}>
-            {isOnline ? 'Online' : 'Offline'}
-          </span>
-        </div>
+        {/* Adresse MAC */}
+        <p className="mt-2 text-[10px] text-slate-300 font-mono">{device.mac}</p>
       </div>
-
-      {/* --- Mesure Principale : PUISSANCE (W) --- */}
-      <div className="mb-6 flex items-end gap-2">
-        <p className={`text-5xl font-black leading-none ${isMaster ? 'text-blue-400' : 'text-emerald-400'}`}>
-          {(device.power || 0).toFixed(0)}
-        </p>
-        <p className="text-sm font-bold text-slate-400 uppercase mb-1">Watts</p>
-      </div>
-
-      {/* --- Grille des sous-métriques --- */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="p-3 bg-slate-950/40 rounded-2xl border border-slate-800/50 flex flex-col justify-between">
-          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Tension</span>
-          <span className="text-sm font-black text-white">{(device.voltage || 0).toFixed(1)} <small className="text-[10px] text-slate-500 font-bold">V</small></span>
-        </div>
-        <div className="p-3 bg-slate-950/40 rounded-2xl border border-slate-800/50 flex flex-col justify-between">
-          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Courant</span>
-          <span className="text-sm font-black text-white">{(device.current || 0).toFixed(2)} <small className="text-[10px] text-slate-500 font-bold">A</small></span>
-        </div>
-        <div className="p-3 bg-slate-950/40 rounded-2xl border border-slate-800/50 flex flex-col justify-between">
-          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Cos φ</span>
-          <span className="text-sm font-black text-white">{(device.power_factor || 0).toFixed(2)}</span>
-        </div>
-        <div className="p-3 bg-slate-950/40 rounded-2xl border border-slate-800/50 flex flex-col justify-between">
-          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Fréquence</span>
-          <span className="text-sm font-black text-white">{(device.frequency_hz || 0).toFixed(1)} <small className="text-[10px] text-slate-500 font-bold">Hz</small></span>
-        </div>
-      </div>
-
-      {/* --- Pied de carte : Énergie --- */}
-      <div className="mt-4 pt-4 border-t border-slate-800/50 flex justify-between items-center">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
-          <Zap className="w-3 h-3" /> Énergie Cumulée
-        </span>
-        <span className="text-xs font-black text-white">{((device.kwh_total || 0) * 1000).toFixed(1)} Wh</span>
-      </div>
-
-      {/* Halo de fond */}
-      <div className={`absolute -bottom-12 -right-12 w-32 h-32 rounded-full blur-3xl opacity-10 bg-${themeColor}-500 pointer-events-none`}></div>
     </div>
   )
 }
 
+/* ── Composant principal ── */
 export default function Dashboard() {
-  const { telemetry, liveHistory } = useTelemetryStore()
-  
+  const { telemetry } = useTelemetryStore()
+
   const auditData = useMemo(() => [
-    { name: 'Nodes Monitorés', value: telemetry.nodes.reduce((acc, n) => acc + (n.power || 0), 0), color: '#10b981' }, // emerald-500
-    { name: 'Charge Inconnue', value: Math.max(0, telemetry.audit.unknown_w), color: '#f43f5e' } // rose-500
+    {
+      name: 'Nœuds surveillés',
+      value: telemetry.nodes.reduce((acc, n) => acc + (n.power || 0), 0),
+      color: '#15803d',
+    },
+    {
+      name: 'Charge non identifiée',
+      value: Math.max(0, telemetry.audit.unknown_w),
+      color: '#b91c1c',
+    },
   ], [telemetry])
 
   if (!telemetry.timestamp) {
     return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-4 text-slate-500">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-black text-xl tracking-tighter animate-pulse uppercase">Synchronisation des relevés...</p>
+      <div className="h-64 flex flex-col items-center justify-center gap-3 text-slate-400">
+        <div className="w-8 h-8 border-4 border-blue-800 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-medium">Synchronisation des relevés en cours…</p>
       </div>
     )
   }
 
-  // Liste unifiée : Master en premier, suivi des Nodes
   const allDevices = [telemetry.master, ...telemetry.nodes]
 
   return (
-    <div className="max-w-7xl mx-auto p-4 lg:p-0 space-y-8">
-      
-      {/* --- SECTION 1 : RELEVÉS INDIVIDUELS (Device Cards) --- */}
-      <div>
-        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-slate-500" /> Relevés en Temps Réel
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+    <div className="max-w-6xl mx-auto space-y-8">
+
+      {/* ── Section 1 : Relevés individuels ── */}
+      <section>
+        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-600 uppercase tracking-widest mb-4 pb-2 border-b border-slate-200">
+          <Activity className="w-4 h-4" />
+          Relevés en temps réel
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {allDevices.map(device => (
             <DeviceCard key={device.mac} device={device} />
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* --- SECTION 2 : CONSOLIDATION (Graphique & Audit) --- */}
-      <div>
-        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2 mt-4">
-          <ShieldAlert className="w-4 h-4 text-slate-500" /> Consolidation & Audit
-        </h2>
-        <div className="flex justify-center">
+      {/* ── Section 2 : Audit différentiel ── */}
+      <section>
+        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-600 uppercase tracking-widest mb-4 pb-2 border-b border-slate-200">
+          <ShieldAlert className="w-4 h-4" />
+          Bilan différentiel
+        </h3>
 
-          {/* AUDIT DIFFERENTIEL */}
-          <div className="w-full max-w-lg p-8 bg-slate-900/60 border border-slate-800 rounded-3xl flex flex-col justify-between shadow-2xl">
-            <div>
-              <h3 className="text-xs font-bold text-white flex items-center gap-2 uppercase tracking-[0.2em] mb-2">
-                <Info className="w-4 h-4 text-rose-500" /> Bilan Différentiel
-              </h3>
-              <p className="text-[10px] text-slate-500 leading-relaxed">
-                Répartition instantanée de la puissance totale mesurée par le Master.
-              </p>
-            </div>
-            
-            <div className="h-44 w-full my-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={auditData} innerRadius={55} outerRadius={75} paddingAngle={8} dataKey="value" cornerRadius={4}>
-                    {auditData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
-                    itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}
-                    formatter={(value) => [`${Math.round(value)} W`, '']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            
-            <div className="space-y-2">
-              {auditData.map(item => (
-                <div key={item.name} className="flex justify-between items-center px-4 py-2.5 bg-slate-950/50 rounded-2xl border border-slate-800/50">
-                  <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }}></div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.name}</span>
-                  </div>
-                  <span className="text-sm font-black text-white">{item.value.toFixed(0)} W</span>
-                </div>
-              ))}
-            </div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 max-w-lg mx-auto">
+          <p className="text-xs text-slate-500 mb-4">
+            Répartition instantanée de la puissance totale mesurée par le compteur général entre
+            les nœuds surveillés et la charge non identifiée (fuites potentielles).
+          </p>
+
+          <div className="h-44">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={auditData}
+                  innerRadius={50}
+                  outerRadius={72}
+                  paddingAngle={6}
+                  dataKey="value"
+                  cornerRadius={3}
+                >
+                  {auditData.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} stroke="none" />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                  }}
+                  formatter={(v) => [`${Math.round(v)} W`]}
+                />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
 
+          {/* Légende */}
+          <div className="mt-3 space-y-2">
+            {auditData.map(item => (
+              <div key={item.name}
+                className="flex justify-between items-center py-2 px-3 bg-slate-50 rounded-lg border border-slate-100 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full inline-block"
+                    style={{ backgroundColor: item.color }} />
+                  <span className="text-slate-600 text-xs">{item.name}</span>
+                </div>
+                <span className="font-bold text-slate-800">{item.value.toFixed(0)} W</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   )
 }

@@ -1,16 +1,24 @@
 import React, { useState } from 'react'
-import { Power, AlertOctagon, CheckCircle, Wifi, WifiOff } from 'lucide-react'
+import { Power, AlertOctagon, CheckCircle } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
+/* ── Toast notification ── */
 function Toast({ message, type, onClose }) {
-  if (!message) return null;
+  if (!message) return null
   return (
-    <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl transition-all duration-500 animate-in slide-in-from-bottom-5 ${type === 'error' ? 'bg-rose-950/90 text-rose-200 border border-rose-900/50' : 'bg-emerald-950/90 text-emerald-200 border border-emerald-900/50'}`}>
-      {type === 'error' ? <AlertOctagon className="w-5 h-5 text-rose-500" /> : <CheckCircle className="w-5 h-5 text-emerald-500" />}
-      <span className="font-medium text-sm">{message}</span>
-      <button onClick={onClose} className="ml-4 text-slate-400 hover:text-white">✕</button>
+    <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3
+      px-5 py-3 rounded-lg shadow-lg border text-sm font-medium
+      ${type === 'error'
+        ? 'bg-red-50 border-red-200 text-red-700'
+        : 'bg-green-50 border-green-200 text-green-700'
+      }`}>
+      {type === 'error'
+        ? <AlertOctagon className="w-4 h-4 text-red-500 flex-shrink-0" />
+        : <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />}
+      <span>{message}</span>
+      <button onClick={onClose} className="ml-3 text-slate-400 hover:text-slate-700 text-base leading-none">✕</button>
     </div>
   )
 }
@@ -30,13 +38,12 @@ export default function Equipments() {
       const res = await fetch(`${API_URL}/api/devices/`)
       if (!res.ok) throw new Error('Erreur réseau')
       return res.json()
-    }
+    },
   })
 
   const toggleMutation = useMutation({
     mutationFn: async ({ mac, role }) => {
-      if (role === 'MASTER') throw new Error("⚠️ Refusé : Vous ne pouvez pas couper le Master via le panneau Relais.")
-      
+      if (role === 'MASTER') throw new Error('Le compteur général ne peut pas être commandé via ce panneau.')
       const res = await fetch(`${API_URL}/api/devices/${mac}/toggle`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json()
@@ -46,79 +53,139 @@ export default function Equipments() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] })
-      showToast(`${data.name} a été ${data.is_active ? 'ALLUMÉ' : 'ÉTEINT'} avec succès.`, 'success')
+      showToast(`${data.name} : relais ${data.is_active ? 'activé' : 'désactivé'} avec succès.`, 'success')
     },
     onError: (error) => {
       showToast(error.message, 'error')
-    }
+    },
   })
 
-  if (isLoading) return <div className="h-64 flex items-center justify-center text-slate-500 animate-pulse font-bold">Récupération des terminaux...</div>
-  if (isError) return <div className="p-8 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-3xl">Impossible de joindre le Backend. Vérifiez votre connexion.</div>
-  
-  return (
-    <div className="max-w-7xl mx-auto p-4 lg:p-8 space-y-8">
-      <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
-      
-      <div className="flex flex-col gap-2 mb-8">
-          <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Gestion des Relais</h1>
-          <p className="text-slate-500 text-sm italic">Pilotez et surveillez l'état de chaque node en temps réel.</p>
+  if (isLoading) {
+    return (
+      <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
+        <div className="w-5 h-5 border-4 border-blue-800 border-t-transparent rounded-full animate-spin mr-3" />
+        Récupération des terminaux…
       </div>
+    )
+  }
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {devices?.map(node => {
-          const isMaster = node.role === 'MASTER'
-          const isOnline = node.status === 'ONLINE'
-          
-          return (
-            <div key={node.mac_address} className={`relative border rounded-3xl p-6 transition-all duration-300 group ${node.is_active ? 'bg-slate-900/80 shadow-xl' : 'bg-slate-900/30'} ${isMaster ? 'border-blue-500/20' : 'border-slate-800'}`}>
-              
-              {/* Badge de statut */}
-              <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1 rounded-full bg-slate-950/50 border border-slate-800">
-                <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500'}`}></div>
-                <span className={`text-[10px] font-bold uppercase tracking-widest ${isOnline ? 'text-emerald-500' : 'text-rose-500'}`}>
-                  {isOnline ? 'En ligne' : 'Hors ligne'}
-                </span>
-              </div>
+  if (isError) {
+    return (
+      <div className="p-5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+        ⚠️ Impossible de joindre le serveur. Vérifiez votre connexion réseau.
+      </div>
+    )
+  }
 
-              <div className="flex justify-between items-start mb-8 pt-4">
-                <div>
-                    <h3 className="text-xl font-black text-white flex items-center gap-2">
-                       {node.name}
-                       {isMaster && <span className="bg-blue-500/20 text-blue-400 text-[10px] px-2 py-0.5 rounded-md border border-blue-500/30 uppercase font-bold">Maître</span>}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-2">
-                       <span className="text-[10px] text-slate-500 font-mono bg-slate-950 px-2 py-0.5 rounded">{node.mac_address}</span>
-                    </div>
-                </div>
-              </div>
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
 
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col gap-1">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">État du Relais</p>
-                    <p className={`text-sm font-black ${node.is_active ? 'text-emerald-500' : 'text-slate-500'}`}>
-                        {node.is_active ? 'ACTIF (ON)' : 'COUPÉ (OFF)'}
-                    </p>
-                </div>
+      {/* Tableau des équipements */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 bg-blue-800 text-white">
+          <h3 className="font-bold text-sm">Liste des équipements connectés</h3>
+          <p className="text-blue-200 text-xs mt-0.5">
+            Cliquez sur le bouton de commande pour activer ou désactiver un relais.
+          </p>
+        </div>
 
-                <button 
-                    onClick={() => toggleMutation.mutate({ mac: node.mac_address, role: node.role })}
-                    disabled={toggleMutation.isPending || isMaster || !isOnline}
-                    className={`p-5 rounded-2xl transition-all duration-500 ${isMaster ? 'bg-slate-800 text-slate-600 opacity-50' : !isOnline ? 'bg-slate-800 text-slate-700 opacity-50 cursor-not-allowed' : node.is_active ? 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'bg-slate-800 text-slate-500 hover:bg-emerald-500/20 hover:text-emerald-500'}`}
-                >
-                    <Power className="w-8 h-8" />
-                </button>
-              </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500">
+                <th className="px-5 py-3 text-left font-semibold">Nom</th>
+                <th className="px-5 py-3 text-left font-semibold">Adresse MAC</th>
+                <th className="px-5 py-3 text-left font-semibold">Rôle</th>
+                <th className="px-5 py-3 text-left font-semibold">Connexion</th>
+                <th className="px-5 py-3 text-left font-semibold">État relais</th>
+                <th className="px-5 py-3 text-center font-semibold">Commande</th>
+              </tr>
+            </thead>
+            <tbody>
+              {devices?.map((node, idx) => {
+                const isMaster = node.role === 'MASTER'
+                const isOnline = node.status === 'ONLINE'
+                return (
+                  <tr key={node.mac_address}
+                    className={`border-b border-slate-100 transition-colors hover:bg-slate-50
+                      ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
 
-              {/* Message de sécurité Master */}
-              {isMaster && (
-                <p className="mt-4 text-[10px] text-blue-500/50 italic text-center border-t border-blue-500/10 pt-3">
-                  ⚠️ Protection : Pilotage centralisé interdit pour le Master.
-                </p>
-              )}
-            </div>
-          )
-        })}
+                    {/* Nom */}
+                    <td className="px-5 py-3 font-semibold text-slate-800">
+                      {node.name}
+                      {isMaster && (
+                        <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase tracking-wide font-bold">
+                          Maître
+                        </span>
+                      )}
+                    </td>
+
+                    {/* MAC */}
+                    <td className="px-5 py-3 font-mono text-slate-400 text-xs">{node.mac_address}</td>
+
+                    {/* Rôle */}
+                    <td className="px-5 py-3 text-slate-600">{isMaster ? 'Compteur général' : 'Nœud'}</td>
+
+                    {/* Statut connexion */}
+                    <td className="px-5 py-3">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
+                        ${isOnline ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60
+                            ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                          <span className={`relative inline-flex rounded-full h-1.5 w-1.5
+                            ${isOnline ? 'bg-green-600' : 'bg-red-600'}`}></span>
+                        </span>
+                        {isOnline ? 'En ligne' : 'Hors ligne'}
+                      </span>
+                    </td>
+
+                    {/* État relais */}
+                    <td className="px-5 py-3">
+                      <span className={`inline-block px-2.5 py-1 rounded text-xs font-semibold
+                        ${node.is_active
+                          ? 'bg-green-50 text-green-700 border border-green-200'
+                          : 'bg-slate-100 text-slate-500 border border-slate-200'
+                        }`}>
+                        {node.is_active ? 'Activé (ON)' : 'Coupé (OFF)'}
+                      </span>
+                    </td>
+
+                    {/* Bouton commande */}
+                    <td className="px-5 py-3 text-center">
+                      {isMaster ? (
+                        <span className="text-xs text-slate-400 italic">Protégé</span>
+                      ) : (
+                        <button
+                          onClick={() => toggleMutation.mutate({ mac: node.mac_address, role: node.role })}
+                          disabled={toggleMutation.isPending || !isOnline}
+                          title={!isOnline ? 'Équipement hors ligne' : node.is_active ? 'Désactiver' : 'Activer'}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-all
+                            ${!isOnline
+                              ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                              : node.is_active
+                                ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                                : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                            }`}
+                        >
+                          <Power className="w-3.5 h-3.5" />
+                          {node.is_active ? 'Désactiver' : 'Activer'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Note de bas de tableau */}
+        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-400">
+          ℹ️ Le compteur général (rôle Maître) est protégé contre toute coupure via ce panneau.
+          Les nœuds hors ligne ne peuvent pas être commandés à distance.
+        </div>
       </div>
     </div>
   )
