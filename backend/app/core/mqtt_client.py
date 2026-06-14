@@ -131,15 +131,25 @@ def on_message(_client, _userdata, msg):
         logger.error(f"💥 MQTT Error: {e}", exc_info=True)
 
 def _build_snapshot(session: Session):
+    # check if mqtt is connected
+    mqtt_connected = _mqtt_client is not None and _mqtt_client.is_connected()
+    
+    # database is online since we are running queries on it
+    db_connected = True
+    
     master = session.exec(select(Device).where(Device.role == RoleEnum.MASTER)).first()
-    if not master: return None
-
-    last_m = session.exec(select(Telemetry).where(Telemetry.device_id == master.id).order_by(desc(Telemetry.timestamp))).first()
-    if not last_m: return None
+    last_m = session.exec(select(Telemetry).where(Telemetry.device_id == master.id).order_by(desc(Telemetry.timestamp))).first() if master else None
 
     # CALCUL DU COUT DYNAMIQUE (POSTPAYÉ)
-    tariff = get_active_tariff(last_m.energy_kwh, session)
-    billing_data = calculate_monthly_cost(last_m.energy_kwh, session)
+    billing_data = {"total_fcfa": 0.0, "energy_cost": 0.0, "fixed_premium": 0.0}
+    tariff_name = "Standard"
+    price_kwh = 88
+    
+    if last_m:
+        tariff = get_active_tariff(last_m.energy_kwh, session)
+        billing_data = calculate_monthly_cost(last_m.energy_kwh, session)
+        tariff_name = tariff.name if tariff else "Standard"
+        price_kwh = tariff.price_per_kwh if tariff else 88
 
     nodes = session.exec(select(Device).where(Device.role == RoleEnum.NODE)).all()
     nodes_data = []
@@ -165,28 +175,33 @@ def _build_snapshot(session: Session):
 
     return {
         "type": "TELEMETRY_UPDATE",
-        "timestamp": last_m.timestamp.isoformat(),
+        "timestamp": last_m.timestamp.isoformat() if last_m else datetime.now(timezone.utc).isoformat(),
+        "system_status": {
+            "mqtt": mqtt_connected,
+            "db": db_connected,
+            "backend": True
+        },
         "master": {
-            "name": master.name,
-            "mac": master.mac_address,
-            "role": master.role,
-            "status": master.status,
-            "power": last_m.power_w,
-            "voltage": last_m.voltage_v,
-            "current": last_m.current_a,
-            "kwh_total": last_m.energy_kwh,
-            "energy_delta_wh": last_m.energy_delta_wh,
-            "power_factor": last_m.power_factor,
-            "frequency_hz": last_m.frequency_hz
+            "name": master.name if master else "Compteur Central SBEE",
+            "mac": master.mac_address if master else "MAC_MASTER",
+            "role": RoleEnum.MASTER,
+            "status": master.status if master else StatusEnum.OFFLINE,
+            "power": last_m.power_w if last_m else 0.0,
+            "voltage": last_m.voltage_v if last_m else 0.0,
+            "current": last_m.current_a if last_m else 0.0,
+            "kwh_total": last_m.energy_kwh if last_m else 0.0,
+            "energy_delta_wh": last_m.energy_delta_wh if last_m else 0.0,
+            "power_factor": last_m.power_factor if last_m else 0.0,
+            "frequency_hz": last_m.frequency_hz if last_m else 50.0
         },
         "nodes": nodes_data,
-        "audit": {"unknown_w": max(0, last_m.power_w - total_p_nodes)},
+        "audit": {"unknown_w": max(0, (last_m.power_w if last_m else 0.0) - total_p_nodes)},
         "billing": {
             "total_fcfa": int(billing_data["total_fcfa"]), 
             "energy_cost": int(billing_data["energy_cost"]),
             "fixed_premium": int(billing_data["fixed_premium"]),
-            "active_tariff": tariff.name if tariff else "Standard", 
-            "price_per_kwh": tariff.price_per_kwh if tariff else 88
+            "active_tariff": tariff_name, 
+            "price_per_kwh": price_kwh
         }
     }
 
