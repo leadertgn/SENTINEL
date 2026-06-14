@@ -80,7 +80,7 @@ export default function MainLayout({ children, activeTab, setActiveTab }) {
   )
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-serif">
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
 
       {/* ── SIDEBAR DESKTOP ── */}
       <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 flex-col bg-white border-r border-slate-200 pt-6 pb-5 gap-5 z-30 shadow-sm">

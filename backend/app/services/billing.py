@@ -74,7 +74,7 @@ def get_active_tariff(kwh: float, session: Session) -> BillingTariff | None:
 def calculate_monthly_cost(kwh: float, session: Session) -> dict:
     """
     Calcul SBEE progressif par paliers (Postpayé).
-    Uniquement basé sur l'énergie réelle consommée (sans frais fixes d'abonnement).
+    Applique la TVA de 18% uniquement sur les tranches supérieures (tranches non-sociales).
     """
     tariffs = session.exec(
         select(BillingTariff).order_by(BillingTariff.min_kwh)
@@ -96,7 +96,13 @@ def calculate_monthly_cost(kwh: float, session: Session) -> dict:
             tranche_size = remaining_kwh
         
         kwh_in_this_tranche = min(remaining_kwh, tranche_size)
-        energy_cost += kwh_in_this_tranche * tariff.price_per_kwh
+        
+        cost_tranche = kwh_in_this_tranche * tariff.price_per_kwh
+        # La tranche sociale (0-20 kWh) est exonérée de TVA. Les tranches supérieures y sont assujetties (18%)
+        if tariff.min_kwh >= 20.0:
+            cost_tranche *= 1.18
+            
+        energy_cost += cost_tranche
         remaining_kwh -= kwh_in_this_tranche
     
     return {

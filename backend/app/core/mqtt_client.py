@@ -96,6 +96,22 @@ def on_message(_client, _userdata, msg):
                     device.is_active = payload.get("is_active")
                 session.commit()
 
+                # ── BARRIÈRE DE TENSION : PROTECTION ACTIVE EN ARRIÈRE-PLAN ──
+                if device.role == RoleEnum.MASTER:
+                    volt = telemetry.voltage_v
+                    if volt > 0.1 and (volt < 180.0 or volt > 250.0):
+                        logger.warning(f"⚠️ DANGER TENSION : {volt}V. Déclenchement de la protection active...")
+                        # Rechercher tous les nodes actifs
+                        active_nodes = session.exec(
+                            select(Device).where(Device.role == RoleEnum.NODE).where(Device.is_active == True)
+                        ).all()
+                        for node in active_nodes:
+                            logger.warning(f"⚡ Coupure automatique du relais de {node.name} ({node.mac_address})")
+                            node.is_active = False
+                            session.add(node)
+                            send_mqtt_command(node.mac_address, "OFF")
+                        session.commit()
+
                 _broadcast_unified_snapshot(session)
 
             elif "/status" in msg.topic:
