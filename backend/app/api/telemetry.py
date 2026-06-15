@@ -142,11 +142,12 @@ def get_billing_report(granularity: str = "month", session: Session = Depends(ge
     else: # month
         period_expr = func.strftime('%Y-%m', Telemetry.timestamp)
         
+    # On somme les deltas (vrais incréments) par période et par device
     query = session.exec(
         select(
             period_expr.label("period"),
             Telemetry.device_id,
-            (func.max(Telemetry.energy_kwh) - func.min(Telemetry.energy_kwh)).label("consumption")
+            (func.sum(Telemetry.energy_delta_wh) / 1000.0).label("consumption")
         )
         .group_by(period_expr, Telemetry.device_id)
         .order_by(period_expr)
@@ -197,3 +198,49 @@ def get_billing_report(granularity: str = "month", session: Session = Depends(ge
     node_names = [d.name for d in devices if d.role == RoleEnum.NODE]
     
     return {"data": result, "node_names": node_names}
+
+
+@router.get("/billing-current")
+def get_billing_current(session: Session = Depends(get_session)):
+    """
+    Retourne la consommation du mois courant pour le Master et chaque Node,
+    en sommant les deltas (energy_delta_wh) depuis le 1er du mois.
+    """
+    from app.models.base import Device, RoleEnum
+    from app.services.billing import calculate_monthly_cost, get_active_tariff
+    
+    now = datetime.now(timezone.utc)
+    # Premier jour du mois courant à minuit UTC
+    first_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    devices = session.exec(select(Device)).all()
+    result = {}
+    
+    for dev in devices:
+        total_wh = session.exec(
+            select(func.sum(Telemetry.energy_delta_wh))
+            .where(Telemetry.device_id == dev.id)
+            .where(Telemetry.timestamp >= first_of_month)
+        ).first() or 0.0
+        result[dev.id] = {"name": dev.name, "role": dev.role, "kwh_month": round(total_wh / 1000.0, 3)}
+    
+    master = next((v for v in result.values() if v["role"] == RoleEnum.MASTER), None)
+    master_kwh = master["kwh_month"] if master else 0.0
+    
+    billing_calc = calculate_monthly_cost(master_kwh, session)
+    tariff = get_active_tariff(master_kwh, session)
+    
+    nodes_kwh = sum(v["kwh_month"] for v in result.values() if v["role"] == RoleEnum.NODE)
+    
+    return {
+        "kwh_month": master_kwh,
+        "cost_fcfa": int(billing_calc["total_fcfa"]),
+        "active_tariff": tariff.name if tariff else "Standard",
+        "price_per_kwh": tariff.price_per_kwh if tariff else 88,
+        "unknown_kwh": round(max(0, master_kwh - nodes_kwh), 3),
+        "nodes": [
+            {"name": v["name"], "kwh_month": v["kwh_month"]}
+            for v in result.values() if v["role"] == RoleEnum.NODE
+        ],
+        "period": first_of_month.strftime("%Y-%m")
+    }

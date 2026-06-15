@@ -15,7 +15,7 @@ const DeviceCard = ({ device }) => {
       {/* En-tête de carte épurée */}
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
         <div className="flex flex-col">
-          <span className="font-bold text-slate-800 text-sm">{device.name}</span>
+          <span className="font-bold text-slate-800 text-base">{device.name}</span>
           <span className="text-[10px] text-slate-400 font-mono mt-0.5">{device.mac}</span>
         </div>
         <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider
@@ -33,10 +33,10 @@ const DeviceCard = ({ device }) => {
         {/* Label et puissance principale */}
         <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-1">Puissance Active</p>
         <div className="flex items-baseline gap-1 mb-5">
-          <span className={`text-4xl font-extrabold tracking-tight ${isMaster ? 'text-blue-600' : 'text-slate-800'}`}>
+          <span className={`text-5xl font-extrabold tracking-tight ${isMaster ? 'text-blue-600' : 'text-slate-800'}`}>
             {(device.power || 0).toFixed(0)}
           </span>
-          <span className="text-sm font-bold text-slate-400">W</span>
+          <span className="text-lg font-bold text-slate-400">W</span>
         </div>
 
         {/* Métriques secondaires */}
@@ -48,8 +48,8 @@ const DeviceCard = ({ device }) => {
             { label: 'Fréquence', value: `${(device.frequency_hz || 0).toFixed(1)} Hz` },
           ].map(({ label, value }) => (
             <div key={label} className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-              <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold">{label}</p>
-              <p className="font-bold text-slate-700 text-sm mt-0.5">{value}</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">{label}</p>
+              <p className="font-bold text-slate-700 text-base mt-0.5">{value}</p>
             </div>
           ))}
         </div>
@@ -71,6 +71,7 @@ const DeviceCard = ({ device }) => {
 /* ── Composant principal ── */
 export default function Dashboard() {
   const { telemetry, isConnected } = useTelemetryStore()
+  const sysStatus = telemetry.system_status || { mqtt: false, db: false, backend: false }
 
   const auditData = useMemo(() => [
     {
@@ -104,19 +105,19 @@ export default function Dashboard() {
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Compteur Principal', active: isMasterOnline, icon: Cpu },
-          { label: 'Broker MQTT', active: isConnected, icon: Network },
-          { label: 'Serveur Backend', active: isConnected, icon: Layers },
-          { label: 'Base de données', active: isConnected, icon: Database },
+          { label: 'Broker MQTT', active: sysStatus.mqtt, icon: Network },
+          { label: 'Serveur Backend', active: sysStatus.backend, icon: Layers },
+          { label: 'Base de données', active: sysStatus.db, icon: Database },
         ].map((sys, idx) => {
           const Icon = sys.icon
           return (
-            <div key={idx} className="flex items-center gap-3 px-3 py-2 bg-slate-50/50 rounded-lg border border-slate-100">
-              <div className={`p-1.5 rounded-md ${sys.active ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                <Icon className="w-4 h-4" />
+            <div key={idx} className="flex items-center gap-3 px-4 py-3 bg-slate-50/50 rounded-lg border border-slate-100">
+              <div className={`p-2 rounded-md ${sys.active ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                <Icon className="w-5 h-5" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">{sys.label}</span>
-                <span className="text-xs font-bold text-slate-700 mt-0.5">
+                <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{sys.label}</span>
+                <span className={`text-sm font-bold mt-0.5 ${sys.active ? 'text-green-700' : 'text-red-600'}`}>
                   {sys.active ? 'Opérationnel' : 'Hors ligne'}
                 </span>
               </div>
