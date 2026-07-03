@@ -26,7 +26,7 @@
 #define LED_ACTIVITY_PIN 4
 
 // ─── Intervalles de temps ────────────────────────────────────────
-#define PUBLISH_INTERVAL_MS   5000    
+#define PUBLISH_INTERVAL_MS   30000    
 #define OFFLINE_INTERVAL_MS   60000   // 60s pour soulager la Flash en hors-ligne
 #define MQTT_RECONNECT_MS     5000    
 #define WIFI_MAX_RETRIES      20      

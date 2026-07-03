@@ -16,75 +16,89 @@ const subtitles = {
   settings: 'Configuration du système',
 }
 
+const NavItem = ({ tab, activeTab, setActiveTab, setSidebarOpen }) => {
+  const Icon = tab.icon
+  const isActive = activeTab === tab.id
+
+  return (
+    <button
+      onClick={() => {
+        setActiveTab(tab.id)
+        setSidebarOpen(false)
+      }}
+      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 text-left text-sm
+        ${isActive
+          ? 'bg-blue-800 text-white font-semibold shadow-sm'
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+        }`}
+    >
+      <Icon className="w-4 h-4 flex-shrink-0" />
+      <span>{tab.label}</span>
+    </button>
+  )
+}
+
+const StatusBadge = ({ isConnected }) => (
+  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium
+    ${isConnected
+      ? 'bg-green-50 border-green-200 text-green-700'
+      : 'bg-red-50 border-red-200 text-red-600'
+    }`}>
+    <span className="relative flex h-2 w-2">
+      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+      <span className={`relative inline-flex rounded-full h-2 w-2 ${isConnected ? 'bg-green-600' : 'bg-red-600'}`}></span>
+    </span>
+    {isConnected ? 'Connecté' : 'Déconnecté'}
+  </div>
+)
+
+const SidebarContent = ({ activeTab, setActiveTab, setSidebarOpen, isConnected }) => (
+  <>
+    <div className="px-4 pb-5 mb-2 border-b border-slate-200">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="bg-blue-800 p-1.5 rounded-lg">
+          <Zap className="w-4 h-4 text-white" />
+        </div>
+        <div>
+          <h1 className="text-base font-bold text-slate-900 tracking-wide">SENTINEL</h1>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest">Smart Energy Monitor</p>
+        </div>
+      </div>
+    </div>
+
+    <nav className="flex flex-col gap-1 flex-1 px-2">
+      {tabs.map(tab => (
+        <NavItem
+          key={tab.id}
+          tab={tab}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          setSidebarOpen={setSidebarOpen}
+        />
+      ))}
+    </nav>
+
+    <div className="px-2 pt-4 border-t border-slate-200">
+      <StatusBadge isConnected={isConnected} />
+    </div>
+  </>
+)
+
 export default function MainLayout({ children, activeTab, setActiveTab }) {
   const isConnected = useTelemetryStore(state => state.isConnected)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-
-  const NavItem = ({ tab }) => {
-    const Icon = tab.icon
-    const isActive = activeTab === tab.id
-    return (
-      <button
-        onClick={() => { setActiveTab(tab.id); setSidebarOpen(false) }}
-        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 text-left text-sm
-          ${isActive
-            ? 'bg-blue-800 text-white font-semibold shadow-sm'
-            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
-      >
-        <Icon className="w-4 h-4 flex-shrink-0" />
-        <span>{tab.label}</span>
-      </button>
-    )
-  }
-
-  const StatusBadge = () => (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium
-      ${isConnected
-        ? 'bg-green-50 border-green-200 text-green-700'
-        : 'bg-red-50 border-red-200 text-red-600'
-      }`}>
-      <span className="relative flex h-2 w-2">
-        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-        <span className={`relative inline-flex rounded-full h-2 w-2 ${isConnected ? 'bg-green-600' : 'bg-red-600'}`}></span>
-      </span>
-      {isConnected ? 'Connecté' : 'Déconnecté'}
-    </div>
-  )
-
-  const SidebarContent = () => (
-    <>
-      {/* Logo / Titre */}
-      <div className="px-4 pb-5 mb-2 border-b border-slate-200">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="bg-blue-800 p-1.5 rounded-lg">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-slate-900 tracking-wide">SENTINEL</h1>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest">Smart Energy Monitor</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex flex-col gap-1 flex-1 px-2">
-        {tabs.map(tab => <NavItem key={tab.id} tab={tab} />)}
-      </nav>
-
-      {/* Statut */}
-      <div className="px-2 pt-4 border-t border-slate-200">
-        <StatusBadge />
-      </div>
-    </>
-  )
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
 
       {/* ── SIDEBAR DESKTOP ── */}
       <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 flex-col bg-white border-r border-slate-200 pt-6 pb-5 gap-5 z-30 shadow-sm">
-        <SidebarContent />
+        <SidebarContent
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          setSidebarOpen={setSidebarOpen}
+          isConnected={isConnected}
+        />
       </aside>
 
       {/* ── SIDEBAR MOBILE (overlay) ── */}
@@ -98,7 +112,12 @@ export default function MainLayout({ children, activeTab, setActiveTab }) {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <SidebarContent />
+            <SidebarContent
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              setSidebarOpen={setSidebarOpen}
+              isConnected={isConnected}
+            />
           </aside>
         </div>
       )}
@@ -112,7 +131,7 @@ export default function MainLayout({ children, activeTab, setActiveTab }) {
             <Menu className="w-5 h-5" />
           </button>
           <span className="font-bold text-slate-800 text-sm">SENTINEL</span>
-          <StatusBadge />
+          <StatusBadge isConnected={isConnected} />
         </header>
 
         {/* Header Desktop */}

@@ -2,6 +2,7 @@ import json
 import logging
 import threading
 import asyncio
+import time
 import paho.mqtt.client as mqtt
 from datetime import datetime, timezone
 from sqlmodel import Session, select
@@ -15,6 +16,17 @@ from app.services.billing import calculate_monthly_cost, get_active_tariff
 logger = logging.getLogger("mqtt")
 _main_loop: asyncio.AbstractEventLoop | None = None
 _mqtt_client: mqtt.Client | None = None
+
+# Variables globales de cache
+_snapshot_cache = None
+_snapshot_cache_time = 0.0
+
+# Variables globales pour la simulation de tension
+_simulated_voltage: float | None = None
+_simulation_active_until: float | None = None
+
+# Queue globale pour le broadcast asynchrone
+_broadcast_queue: asyncio.Queue | None = None
 
 def _validate_and_register(session: Session, payload: dict) -> Device | None:
     mac = payload.get("mac_address")
@@ -131,6 +143,21 @@ def on_message(_client, _userdata, msg):
         logger.error(f"💥 MQTT Error: {e}", exc_info=True)
 
 def _build_snapshot(session: Session):
+    global _snapshot_cache, _snapshot_cache_time, _simulated_voltage, _simulation_active_until
+    
+    # Vérifier si la simulation est active
+    sim_active = False
+    if _simulated_voltage is not None and _simulation_active_until is not None:
+        if time.time() < _simulation_active_until:
+            sim_active = True
+        else:
+            _simulated_voltage = None
+            _simulation_active_until = None
+
+    # Si pas de simulation et cache encore valide (TTL 5.0 secondes), on retourne le cache
+    if not sim_active and _snapshot_cache is not None and (time.time() - _snapshot_cache_time) < 5.0:
+        return _snapshot_cache
+
     # check if mqtt is connected
     mqtt_connected = _mqtt_client is not None and _mqtt_client.is_connected()
     
@@ -173,7 +200,18 @@ def _build_snapshot(session: Session):
         })
         total_p_nodes += p
 
-    return {
+    master_voltage = last_m.voltage_v if last_m else 0.0
+    master_current = last_m.current_a if last_m else 0.0
+
+    # Surcharge si simulation active
+    if sim_active and _simulated_voltage is not None:
+        master_voltage = _simulated_voltage
+        # Calcul du courant cohérent si P > 0
+        pf = last_m.power_factor if (last_m and last_m.power_factor > 0) else 0.95
+        power = last_m.power_w if last_m else 0.0
+        master_current = power / (master_voltage * pf) if (master_voltage > 0 and pf > 0) else 0.0
+
+    snapshot = {
         "type": "TELEMETRY_UPDATE",
         "timestamp": last_m.timestamp.isoformat() if last_m else datetime.now(timezone.utc).isoformat(),
         "system_status": {
@@ -187,8 +225,8 @@ def _build_snapshot(session: Session):
             "role": RoleEnum.MASTER,
             "status": master.status if master else StatusEnum.OFFLINE,
             "power": last_m.power_w if last_m else 0.0,
-            "voltage": last_m.voltage_v if last_m else 0.0,
-            "current": last_m.current_a if last_m else 0.0,
+            "voltage": master_voltage,
+            "current": master_current,
             "kwh_total": last_m.energy_kwh if last_m else 0.0,
             "energy_delta_wh": last_m.energy_delta_wh if last_m else 0.0,
             "power_factor": last_m.power_factor if last_m else 0.0,
@@ -205,15 +243,41 @@ def _build_snapshot(session: Session):
         }
     }
 
+    # Ne mettre en cache que si la simulation n'est pas active
+    if not sim_active:
+        _snapshot_cache = snapshot
+        _snapshot_cache_time = time.time()
+
+    return snapshot
+
+async def queue_drainer():
+    global _broadcast_queue
+    while True:
+        try:
+            if _broadcast_queue is None:
+                await asyncio.sleep(0.1)
+                continue
+            snapshot = await _broadcast_queue.get()
+            logger.info("📡 WebSocket : Diffusion d'une mise à jour (Queue)")
+            await manager.broadcast(snapshot)
+            _broadcast_queue.task_done()
+        except Exception as e:
+            logger.error(f"⚠️ Queue Drainer Error: {e}")
+            await asyncio.sleep(0.5)
+
 def _broadcast_unified_snapshot(session: Session):
-    global _main_loop
+    global _broadcast_queue
     try:
         snapshot = _build_snapshot(session)
         if not snapshot: return
 
-        if _main_loop:
-            logger.info("📡 WebSocket : Diffusion d'une mise à jour (Snapshot)")
-            asyncio.run_coroutine_threadsafe(manager.broadcast(snapshot), _main_loop)
+        if _broadcast_queue is not None:
+            _broadcast_queue.put_nowait(snapshot)
+        else:
+            # Fallback temporaire si la queue n'est pas encore prête
+            global _main_loop
+            if _main_loop:
+                asyncio.run_coroutine_threadsafe(manager.broadcast(snapshot), _main_loop)
     except Exception as e:
         logger.error(f"⚠️ Broadcast Error: {e}")
 

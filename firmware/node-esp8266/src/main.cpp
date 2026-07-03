@@ -31,6 +31,9 @@ void handle_leds() {
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600); // 3600 = GMT+1
 
+static unsigned long lastGoodEpoch = 0;
+static unsigned long millisAtSync = 0;
+
 void setup() {
     Serial.begin(115200);
     delay(1000);
@@ -67,7 +70,9 @@ void loop() {
     static unsigned long lastNtpUpdate = 0;
     if (now - lastNtpUpdate >= 60000) {
         lastNtpUpdate = now;
-        timeClient.update();
+        if (WiFi.status() == WL_CONNECTED) {
+            timeClient.update();
+        }
     }
 
     unsigned long currentInterval = mqtt_connected() ? PUBLISH_INTERVAL_MS : OFFLINE_INTERVAL_MS;
@@ -76,7 +81,21 @@ void loop() {
         lastPublishMs = now;
         SensorData data = read_sensor(get_relay_state());
         if (data.valid) {
-            publish_telemetry(data, timeClient.getEpochTime());
+            unsigned long epochToSend = 0;
+            if (mqtt_connected()) {
+                timeClient.update(); // Mettre à jour l'heure juste avant l'envoi
+                unsigned long currentEpoch = timeClient.getEpochTime();
+                if (currentEpoch > 1600000000) {
+                    lastGoodEpoch = currentEpoch;
+                    millisAtSync = millis();
+                }
+            }
+
+            if (lastGoodEpoch > 0) {
+                epochToSend = lastGoodEpoch + (millis() - millisAtSync) / 1000;
+            }
+
+            publish_telemetry(data, epochToSend);
             activityFlashUntil = millis() + 100; // Flash de 100ms
         }
     }

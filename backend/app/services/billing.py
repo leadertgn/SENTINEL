@@ -81,9 +81,16 @@ def calculate_monthly_cost(kwh: float, session: Session) -> dict:
     ).all()
     
     if not tariffs:
-        return {"energy_cost": 0.0, "fixed_premium": 0.0, "total_fcfa": 0.0}
+        return {
+            "energy_cost_ht": 0.0,
+            "energy_cost": 0.0,
+            "tva_fcfa": 0.0,
+            "fixed_premium": 0.0,
+            "total_fcfa": 0.0,
+        }
     
-    energy_cost = 0.0
+    energy_cost_ht = 0.0
+    tva_fcfa = 0.0
     remaining_kwh = kwh
     
     for tariff in tariffs:
@@ -96,17 +103,20 @@ def calculate_monthly_cost(kwh: float, session: Session) -> dict:
             tranche_size = remaining_kwh
         
         kwh_in_this_tranche = min(remaining_kwh, tranche_size)
-        
-        cost_tranche = kwh_in_this_tranche * tariff.price_per_kwh
+
+        cost_tranche_ht = kwh_in_this_tranche * tariff.price_per_kwh
+        energy_cost_ht += cost_tranche_ht
+
         # La tranche sociale (0-20 kWh) est exonérée de TVA. Les tranches supérieures y sont assujetties (18%)
         if tariff.min_kwh >= 20.0:
-            cost_tranche *= 1.18
-            
-        energy_cost += cost_tranche
+            tva_fcfa += cost_tranche_ht * 0.18
+
         remaining_kwh -= kwh_in_this_tranche
     
     return {
-        "energy_cost": round(energy_cost, 2),
+        "energy_cost_ht": round(energy_cost_ht, 2),
+        "energy_cost": round(energy_cost_ht, 2),
+        "tva_fcfa": round(tva_fcfa, 2),
         "fixed_premium": 0.0,  # Conservé dans la structure pour compatibilité
-        "total_fcfa": round(energy_cost, 2)
+        "total_fcfa": round(energy_cost_ht + tva_fcfa, 2)
     }

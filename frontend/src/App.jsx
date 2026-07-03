@@ -7,6 +7,7 @@ import MainLayout from './layouts/MainLayout'
 import Dashboard from './pages/Dashboard'
 import Equipments from './pages/Equipments'
 import Billing from './pages/Billing'
+import Settings from './pages/Settings'
 
 // Initialisation de React Query
 const queryClient = new QueryClient()
@@ -25,7 +26,7 @@ function RootApp() {
       {activeTab === 'dashboard' && <Dashboard />}
       {activeTab === 'equipments' && <Equipments />}
       {activeTab === 'billing' && <Billing />}
-      {activeTab === 'settings' && <div className="text-slate-400">Paramètres en construction...</div>}
+      {activeTab === 'settings' && <Settings />}
     </MainLayout>
   )
 }

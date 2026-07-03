@@ -24,7 +24,7 @@
 #define LED_ACTIVITY_PIN 4  // D2
 
 // ─── Intervalles ────────────────────────────────────────────────
-#define PUBLISH_INTERVAL_MS   5000    
+#define PUBLISH_INTERVAL_MS   30000    
 #define OFFLINE_INTERVAL_MS   60000   
 #define MQTT_RECONNECT_MS     5000    
 #define WIFI_MAX_RETRIES      20    

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import create_db_and_tables
-from app.api import telemetry, devices
+from app.api import telemetry, devices, simulation
 from app.core.mqtt_client import start_mqtt_client
 from sqlmodel import Session, select
 from app.core.database import get_session
@@ -29,12 +29,12 @@ async def device_watchdog():
                 for d in devices:
                     last_t = session.exec(select(Telemetry).where(Telemetry.device_id == d.id).order_by(desc(Telemetry.timestamp))).first()
                     if last_t:
-                        if datetime.now(timezone.utc) - last_t.timestamp > timedelta(minutes=2):
+                        if datetime.now(timezone.utc) - last_t.timestamp > timedelta(minutes=3):
                             d.status = StatusEnum.OFFLINE
                             d.is_active = False # On suppose coupé par sécurité
                             session.add(d)
                             changed = True
-                            logging.getLogger("watchdog").info(f"🔴 Watchdog : Appareil {d.mac_address} déclaré HORS-LIGNE (Timeout 2min).")
+                            logging.getLogger("watchdog").info(f"🔴 Watchdog : Appareil {d.mac_address} déclaré HORS-LIGNE (Timeout 3min).")
                 
                 if changed:
                     session.commit()
@@ -46,6 +46,11 @@ async def device_watchdog():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
+    
+    # Initialisation de la queue asynchrone pour le broadcast
+    from app.core import mqtt_client
+    mqtt_client._broadcast_queue = asyncio.Queue()
+    asyncio.create_task(mqtt_client.queue_drainer())
     
     # Injection des données initiales (Tarifs SBEE)
     try:
@@ -81,6 +86,7 @@ app.add_middleware(
 
 app.include_router(devices.router)
 app.include_router(telemetry.router)
+app.include_router(simulation.router)
 
 # Route tariffs (scalable depuis la DB)
 @app.get("/api/tariffs")
