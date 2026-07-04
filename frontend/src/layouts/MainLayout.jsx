@@ -39,14 +39,14 @@ const NavItem = ({ tab, activeTab, setActiveTab, setSidebarOpen }) => {
 }
 
 const StatusBadge = ({ isConnected }) => (
-  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium
+  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-semibold
     ${isConnected
-      ? 'bg-green-50 border-green-200 text-green-700'
-      : 'bg-red-50 border-red-200 text-red-600'
+      ? 'bg-green-100 border-green-300 text-green-800'
+      : 'bg-red-100 border-red-300 text-red-700'
     }`}>
-    <span className="relative flex h-2 w-2">
+    <span className="relative flex h-3 w-3">
       <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-      <span className={`relative inline-flex rounded-full h-2 w-2 ${isConnected ? 'bg-green-600' : 'bg-red-600'}`}></span>
+      <span className={`relative inline-flex rounded-full h-3 w-3 ${isConnected ? 'bg-green-600' : 'bg-red-600'}`}></span>
     </span>
     {isConnected ? 'Connecté' : 'Déconnecté'}
   </div>
@@ -61,7 +61,7 @@ const SidebarContent = ({ activeTab, setActiveTab, setSidebarOpen, isConnected }
         </div>
         <div>
           <h1 className="text-base font-bold text-slate-900 tracking-wide">SENTINEL</h1>
-          <p className="text-[10px] text-slate-400 uppercase tracking-widest">Smart Energy Monitor</p>
+          <p className="text-sm text-slate-600 uppercase tracking-widest">Smart Energy Monitor</p>
         </div>
       </div>
     </div>
@@ -108,7 +108,7 @@ export default function MainLayout({ children, activeTab, setActiveTab }) {
           <aside className="relative w-64 bg-white border-r border-slate-200 flex flex-col pt-6 pb-5 gap-5 z-50 shadow-lg">
             <div className="flex items-center justify-between px-4 mb-1">
               <span className="font-bold text-slate-900">Menu</span>
-              <button onClick={() => setSidebarOpen(false)} className="text-slate-400 hover:text-slate-700">
+              <button onClick={() => setSidebarOpen(false)} className="text-slate-600 hover:text-slate-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -148,7 +148,7 @@ export default function MainLayout({ children, activeTab, setActiveTab }) {
         </main>
 
         {/* Footer */}
-        <footer className="hidden md:block px-8 py-3 border-t border-slate-200 bg-white text-center text-xs text-slate-400">
+        <footer className="hidden md:block px-8 py-3 border-t border-slate-200 bg-white text-center text-xs text-slate-600">
           SENTINEL — Système de supervision énergétique intelligente
         </footer>
 
@@ -162,10 +162,10 @@ export default function MainLayout({ children, activeTab, setActiveTab }) {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-colors
-                  ${isActive ? 'text-blue-800' : 'text-slate-400'}`}
+                  ${isActive ? 'text-blue-800' : 'text-slate-600'}`}
               >
                 <Icon className="w-4 h-4" />
-                <span className="text-[9px] font-medium">{tab.label}</span>
+                <span className="text-xs font-medium">{tab.label}</span>
               </button>
             )
           })}

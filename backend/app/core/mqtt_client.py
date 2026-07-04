@@ -28,6 +28,36 @@ _simulation_active_until: float | None = None
 # Queue globale pour le broadcast asynchrone
 _broadcast_queue: asyncio.Queue | None = None
 
+# Plage de sécurité de la barrière de tension (V)
+VOLTAGE_MIN = 180.0
+VOLTAGE_MAX = 250.0
+
+
+def sim_is_active() -> bool:
+    """Vrai si une simulation de tension est en cours (non expirée)."""
+    return (
+        _simulated_voltage is not None
+        and _simulation_active_until is not None
+        and time.time() < _simulation_active_until
+    )
+
+
+def effective_master_voltage(session: Session) -> float | None:
+    """
+    Tension de référence pour la barrière de protection.
+    Pendant une simulation, c'est la tension simulée qui fait autorité ;
+    sinon, la dernière tension réelle remontée par le Master.
+    """
+    if sim_is_active():
+        return _simulated_voltage
+    master = session.exec(select(Device).where(Device.role == RoleEnum.MASTER)).first()
+    if not master:
+        return None
+    last = session.exec(
+        select(Telemetry).where(Telemetry.device_id == master.id).order_by(desc(Telemetry.timestamp))
+    ).first()
+    return last.voltage_v if last else None
+
 def _validate_and_register(session: Session, payload: dict) -> Device | None:
     mac = payload.get("mac_address")
     secret = payload.get("secret_key")
@@ -108,10 +138,18 @@ def on_message(_client, _userdata, msg):
                     device.is_active = payload.get("is_active")
                 session.commit()
 
+                # ── GEL PENDANT SIMULATION ──
+                # Tant qu'un scénario de tension simulé est actif, la tension
+                # simulée fait autorité : on stocke la vraie trame (historique)
+                # mais on n'exécute PAS la barrière réelle et on ne rediffuse
+                # PAS, pour que l'affichage reste figé sur les valeurs simulées.
+                if sim_is_active():
+                    return
+
                 # ── BARRIÈRE DE TENSION : PROTECTION ACTIVE EN ARRIÈRE-PLAN ──
                 if device.role == RoleEnum.MASTER:
                     volt = telemetry.voltage_v
-                    if volt > 0.1 and (volt < 180.0 or volt > 250.0):
+                    if volt > 0.1 and (volt < VOLTAGE_MIN or volt > VOLTAGE_MAX):
                         logger.warning(f"⚠️ DANGER TENSION : {volt}V. Déclenchement de la protection active...")
                         # Rechercher tous les nodes actifs
                         active_nodes = session.exec(
@@ -266,18 +304,21 @@ async def queue_drainer():
             await asyncio.sleep(0.5)
 
 def _broadcast_unified_snapshot(session: Session):
-    global _broadcast_queue
+    global _broadcast_queue, _main_loop
     try:
         snapshot = _build_snapshot(session)
         if not snapshot: return
 
-        if _broadcast_queue is not None:
-            _broadcast_queue.put_nowait(snapshot)
-        else:
-            # Fallback temporaire si la queue n'est pas encore prête
-            global _main_loop
-            if _main_loop:
-                asyncio.run_coroutine_threadsafe(manager.broadcast(snapshot), _main_loop)
+        # `_broadcast_unified_snapshot` est appelée depuis le thread MQTT
+        # (loop_forever) ou depuis un thread de la threadpool FastAPI, jamais
+        # depuis la boucle asyncio. `asyncio.Queue` n'étant pas thread-safe, on
+        # réveille la boucle de façon sûre via call_soon_threadsafe. Sinon le
+        # drainer ne serait pas réveillé de manière fiable (affichage figé).
+        if _broadcast_queue is not None and _main_loop is not None:
+            _main_loop.call_soon_threadsafe(_broadcast_queue.put_nowait, snapshot)
+        elif _main_loop is not None:
+            # Fallback si la queue n'est pas encore prête
+            asyncio.run_coroutine_threadsafe(manager.broadcast(snapshot), _main_loop)
     except Exception as e:
         logger.error(f"⚠️ Broadcast Error: {e}")
 

@@ -5,7 +5,12 @@ from typing import List
 import logging
 from app.core.database import get_session
 from app.models.base import Device, Telemetry, RoleEnum
-from app.core.mqtt_client import send_mqtt_command
+from app.core.mqtt_client import (
+    send_mqtt_command,
+    effective_master_voltage,
+    VOLTAGE_MIN,
+    VOLTAGE_MAX,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,19 +34,15 @@ def toggle_device(mac: str, session: Session = Depends(get_session)):
             detail="⚠️ Sécurité : Le Master ne peut pas être désactivé logiciellement."
         )
     
-    # 3. Barrière de Tension (Check via le Master)
-    master = session.exec(select(Device).where(Device.role == RoleEnum.MASTER)).first()
-    if master and not device.is_active: # On vérifie si on veut ALLUMER
-        last_t = session.exec(
-            select(Telemetry).where(Telemetry.device_id == master.id).order_by(desc(Telemetry.timestamp))
-        ).first()
-        
-        if last_t:
-            if last_t.voltage_v < 180.0 or last_t.voltage_v > 250.0:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"DANGER TENSION : {last_t.voltage_v}V. Action bloquée pour protéger vos moteurs."
-                )
+    # 3. Barrière de Tension (tension effective : simulée si un scénario est actif,
+    #    sinon dernière mesure réelle du Master). On ne vérifie qu'à l'ALLUMAGE.
+    if not device.is_active:
+        v = effective_master_voltage(session)
+        if v is not None and (v < VOLTAGE_MIN or v > VOLTAGE_MAX):
+            raise HTTPException(
+                status_code=400,
+                detail=f"DANGER TENSION : {v}V. Action bloquée pour protéger vos moteurs."
+            )
 
     # 4. Bascule de l'état et envoi MQTT
     new_action = "OFF" if device.is_active else "ON"

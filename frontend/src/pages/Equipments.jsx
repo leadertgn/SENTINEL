@@ -1,31 +1,36 @@
 import React, { useState } from "react";
-import { Power, AlertOctagon, CheckCircle } from "lucide-react";
+import { Power, AlertOctagon, CheckCircle, ShieldAlert } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTelemetryStore } from "../store/useTelemetryStore";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
+// Plage de sécurité de la barrière de tension (identique au backend)
+const VOLTAGE_MIN = 180;
+const VOLTAGE_MAX = 250;
 
 /* ── Toast notification ── */
 function Toast({ message, type, onClose }) {
   if (!message) return null;
   return (
     <div
-      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3
-      px-5 py-3 rounded-lg shadow-lg border text-sm font-medium
+      className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3
+      px-6 py-4 rounded-lg shadow-xl border-2 text-base font-semibold max-w-2xl
       ${
         type === "error"
-          ? "bg-red-50 border-red-200 text-red-700"
-          : "bg-green-50 border-green-200 text-green-700"
+          ? "bg-red-100 border-red-300 text-red-800"
+          : "bg-green-100 border-green-300 text-green-800"
       }`}
     >
       {type === "error" ? (
-        <AlertOctagon className="w-4 h-4 text-red-500 flex-shrink-0" />
+        <AlertOctagon className="w-6 h-6 text-red-600 shrink-0" />
       ) : (
-        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+        <CheckCircle className="w-6 h-6 text-green-700 shrink-0" />
       )}
       <span>{message}</span>
       <button
         onClick={onClose}
-        className="ml-3 text-slate-400 hover:text-slate-700 text-base leading-none"
+        className="ml-3 text-slate-600 hover:text-slate-700 text-base leading-none"
       >
         ✕
       </button>
@@ -37,9 +42,18 @@ export default function Equipments() {
   const queryClient = useQueryClient();
   const [toast, setToast] = useState(null);
 
+  // Tension effective de l'arrivée générale (réelle ou simulée) issue du flux
+  // temps réel. Sert à verrouiller/griser les commandes hors plage de sécurité.
+  const { telemetry } = useTelemetryStore();
+  const masterVoltage = telemetry?.master?.voltage ?? null;
+  const voltageLocked =
+    masterVoltage !== null &&
+    masterVoltage > 0 &&
+    (masterVoltage < VOLTAGE_MIN || masterVoltage > VOLTAGE_MAX);
+
   const showToast = (message, type) => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), 7000);
   };
 
   const {
@@ -84,7 +98,7 @@ export default function Equipments() {
 
   if (isLoading) {
     return (
-      <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
+      <div className="h-48 flex items-center justify-center text-slate-600 text-sm">
         <div className="w-5 h-5 border-4 border-blue-800 border-t-transparent rounded-full animate-spin mr-3" />
         Récupération des terminaux…
       </div>
@@ -119,6 +133,14 @@ export default function Equipments() {
           </p>
         </div>
 
+        {voltageLocked && (
+          <div className="px-6 py-3 bg-red-50 border-b border-red-200 flex items-center gap-2 text-sm font-semibold text-red-700">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            Tension hors plage de sécurité ({masterVoltage?.toFixed(0)} V). Barrière
+            de protection active : l'allumage des relais est verrouillé (180–250 V).
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -151,14 +173,14 @@ export default function Equipments() {
                     <td className="px-5 py-3 font-semibold text-slate-800">
                       {node.name}
                       {isMaster && (
-                        <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase tracking-wide font-bold">
+                        <span className="ml-2 text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase tracking-wide font-bold">
                           Maître
                         </span>
                       )}
                     </td>
 
                     {/* MAC */}
-                    <td className="px-5 py-3 font-mono text-slate-400 text-xs">
+                    <td className="px-5 py-3 font-mono text-slate-600 text-sm">
                       {node.mac_address}
                     </td>
 
@@ -170,16 +192,16 @@ export default function Equipments() {
                     {/* Statut connexion */}
                     <td className="px-5 py-3">
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
-                        ${isOnline ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold
+                        ${isOnline ? "bg-green-100 text-green-800 border border-green-300" : "bg-red-100 text-red-700 border border-red-300"}`}
                       >
-                        <span className="relative flex h-1.5 w-1.5">
+                        <span className="relative flex h-2.5 w-2.5">
                           <span
                             className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60
                             ${isOnline ? "bg-green-500" : "bg-red-500"}`}
                           ></span>
                           <span
-                            className={`relative inline-flex rounded-full h-1.5 w-1.5
+                            className={`relative inline-flex rounded-full h-2.5 w-2.5
                             ${isOnline ? "bg-green-600" : "bg-red-600"}`}
                           ></span>
                         </span>
@@ -190,11 +212,11 @@ export default function Equipments() {
                     {/* État relais */}
                     <td className="px-5 py-3">
                       <span
-                        className={`inline-block px-2.5 py-1 rounded text-xs font-semibold
+                        className={`inline-block px-3 py-1.5 rounded text-sm font-semibold
                         ${
                           node.is_active
-                            ? "bg-green-50 text-green-700 border border-green-200"
-                            : "bg-slate-100 text-slate-500 border border-slate-200"
+                            ? "bg-green-100 text-green-800 border border-green-300"
+                            : "bg-slate-100 text-slate-600 border border-slate-300"
                         }`}
                       >
                         {node.is_active ? "Activé (ON)" : "Coupé (OFF)"}
@@ -204,37 +226,55 @@ export default function Equipments() {
                     {/* Bouton commande */}
                     <td className="px-5 py-3 text-center">
                       {isMaster ? (
-                        <span className="text-xs text-slate-400 italic">
+                        <span className="text-xs text-slate-600 italic">
                           Protégé
                         </span>
                       ) : (
-                        <button
-                          onClick={() =>
-                            toggleMutation.mutate({
-                              mac: node.mac_address,
-                              role: node.role,
-                            })
-                          }
-                          disabled={toggleMutation.isPending || !isOnline}
-                          title={
-                            !isOnline
-                              ? "Équipement hors ligne"
+                        (() => {
+                          // On peut toujours ÉTEINDRE ; on ne verrouille que
+                          // l'ALLUMAGE quand la tension est hors plage (comme le backend).
+                          const blockOn = voltageLocked && !node.is_active;
+                          const disabled =
+                            toggleMutation.isPending || !isOnline || blockOn;
+                          const title = !isOnline
+                            ? "Équipement hors ligne"
+                            : blockOn
+                              ? `Tension hors plage (${masterVoltage?.toFixed(0)} V) — commande verrouillée`
                               : node.is_active
                                 ? "Désactiver"
-                                : "Activer"
-                          }
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-all
+                                : "Activer";
+                          return (
+                            <button
+                              onClick={() =>
+                                toggleMutation.mutate({
+                                  mac: node.mac_address,
+                                  role: node.role,
+                                })
+                              }
+                              disabled={disabled}
+                              title={title}
+                              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded text-sm font-semibold border transition-all
                             ${
-                              !isOnline
+                              !isOnline || blockOn
                                 ? "bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed"
                                 : node.is_active
                                   ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
                                   : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
                             }`}
-                        >
-                          <Power className="w-3.5 h-3.5" />
-                          {node.is_active ? "Désactiver" : "Activer"}
-                        </button>
+                            >
+                              {blockOn ? (
+                                <ShieldAlert className="w-3.5 h-3.5" />
+                              ) : (
+                                <Power className="w-3.5 h-3.5" />
+                              )}
+                              {blockOn
+                                ? "Verrouillé"
+                                : node.is_active
+                                  ? "Désactiver"
+                                  : "Activer"}
+                            </button>
+                          );
+                        })()
                       )}
                     </td>
                   </tr>

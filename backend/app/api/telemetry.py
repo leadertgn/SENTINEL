@@ -235,6 +235,8 @@ def get_billing_current(session: Session = Depends(get_session)):
     return {
         "kwh_month": master_kwh,
         "cost_fcfa": int(billing_calc["total_fcfa"]),
+        "energy_cost": int(billing_calc["energy_cost"]),
+        "fixed_premium": int(billing_calc["fixed_premium"]),
         "active_tariff": tariff.name if tariff else "Standard",
         "price_per_kwh": tariff.price_per_kwh if tariff else 88,
         "unknown_kwh": round(max(0, master_kwh - nodes_kwh), 3),

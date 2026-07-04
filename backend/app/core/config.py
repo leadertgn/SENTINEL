@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Sécurité IoT
     DEVICE_SHARED_SECRET: str = "SENTINEL_SECRET_2026"
 
+    # Facturation SBEE — Prime fixe (redevance) : 500 FCFA par kVA souscrit.
+    # Affichée à titre informatif, NON incluse dans le coût énergie (paliers)
+    # afin de rester strictement conforme au chiffre du mémoire (34 950 FCFA / 280 kWh).
+    FIXED_PREMIUM_PER_KVA: float = 500.0
+    SUBSCRIBED_KVA: float = 5.0
+
     # Simulation
     ACCELERATION_FACTOR: int = 1800
 

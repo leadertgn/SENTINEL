@@ -61,7 +61,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 font-serif">
+    <div className="max-w-4xl mx-auto space-y-8">
       {/* Notification Toast ou Inline */}
       {message && (
         <div
@@ -95,18 +95,18 @@ export default function Settings() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
             <button
-              onClick={() => triggerSim("voltage", 170.0)}
+              onClick={() => triggerSim("voltage", 175.0)}
               disabled={loading}
               className="px-4 py-3 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 rounded font-sans font-bold transition-all"
             >
-              Simuler Sous-tension (170 V)
+              Simuler Sous-tension (175 V)
             </button>
             <button
-              onClick={() => triggerSim("voltage", 260.0)}
+              onClick={() => triggerSim("voltage", 254.0)}
               disabled={loading}
               className="px-4 py-3 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 rounded font-sans font-bold transition-all"
             >
-              Simuler Surtension (260 V)
+              Simuler Surtension (254 V)
             </button>
             <button
               onClick={() => triggerSim("voltage", 220.0)}

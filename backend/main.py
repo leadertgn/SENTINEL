@@ -93,6 +93,21 @@ app.include_router(simulation.router)
 def get_tariffs(session: Session = Depends(get_session)):
     return session.exec(select(BillingTariff).order_by(BillingTariff.min_kwh)).all()
 
+
+# Simulateur de facturation : saisir un index (kWh) et obtenir le détail par
+# palier + le total. Reproduit en direct l'exemple du mémoire (280 kWh → 34 950 FCFA).
+@app.get("/api/billing/simulate")
+def simulate_billing(kwh: float, session: Session = Depends(get_session)):
+    from app.services.billing import calculate_monthly_cost, get_active_tariff
+    kwh = max(0.0, kwh)
+    calc = calculate_monthly_cost(kwh, session)
+    tariff = get_active_tariff(kwh, session)
+    return {
+        "kwh": round(kwh, 3),
+        "active_tariff": tariff.name if tariff else "—",
+        **calc,
+    }
+
 @app.get("/")
 def read_root():
     return {"message": "API SENTINEL (Industrielle) est en ligne."}

@@ -54,7 +54,16 @@ void setup() {
     pzem_init();
     mqtt_setup();
     timeClient.begin();
-    
+
+    // Synchro NTP initiale (si WiFi déjà connecté) pour horodater dès le départ
+    if (WiFi.status() == WL_CONNECTED && timeClient.update()) {
+        unsigned long e = timeClient.getEpochTime();
+        if (e > 1600000000) {
+            lastGoodEpoch = e;
+            millisAtSync = millis();
+        }
+    }
+
     Serial.println("✅ SYSTEME PRET");
 }
 
@@ -67,11 +76,18 @@ void loop() {
     // On met à jour l'heure NTP seulement toutes les minutes
     // Cela évite que l'échec DNS (timeout de 15s) ne bloque la boucle
     // et ne provoque la déconnexion du client MQTT !
+    // Synchro NTP en tâche de fond (toutes les 60s) — hors du chemin de publication.
+    // On met à jour l'ancre glissante (lastGoodEpoch / millisAtSync) uniquement ici,
+    // pour ne JAMAIS bloquer l'envoi MQTT avec une requête UDP potentiellement lente.
     static unsigned long lastNtpUpdate = 0;
     if (now - lastNtpUpdate >= 60000) {
         lastNtpUpdate = now;
-        if (WiFi.status() == WL_CONNECTED) {
-            timeClient.update();
+        if (WiFi.status() == WL_CONNECTED && timeClient.update()) {
+            unsigned long e = timeClient.getEpochTime();
+            if (e > 1600000000) {
+                lastGoodEpoch = e;
+                millisAtSync = millis();
+            }
         }
     }
 
@@ -81,16 +97,8 @@ void loop() {
         lastPublishMs = now;
         SensorData data = read_sensor(get_relay_state());
         if (data.valid) {
+            // Timestamp glissant, non bloquant : ancre NTP + temps écoulé depuis la synchro.
             unsigned long epochToSend = 0;
-            if (mqtt_connected()) {
-                timeClient.update(); // Mettre à jour l'heure juste avant l'envoi
-                unsigned long currentEpoch = timeClient.getEpochTime();
-                if (currentEpoch > 1600000000) {
-                    lastGoodEpoch = currentEpoch;
-                    millisAtSync = millis();
-                }
-            }
-
             if (lastGoodEpoch > 0) {
                 epochToSend = lastGoodEpoch + (millis() - millisAtSync) / 1000;
             }

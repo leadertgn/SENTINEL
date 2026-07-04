@@ -5,23 +5,19 @@ import random
 import paho.mqtt.client as mqtt
 
 # ================================================================
-#  SENTINEL — Node Simulator (Python) — PLAN DE REPLI
-#  Simule un Node réel (ESP8266 + relais) sans matériel.
-#  Usage :  python simulate_node.py [puissance_W]
-#           (défaut : 200 W — utilisé pour les scénarios d'audit A/B)
-#
-#  IMPORTANT : le payload inclut `secret_key`, sans quoi le backend
-#  rejette l'appareil (authentification par clé partagée).
+#  SENTINEL — Master Simulator (Python) — PLAN DE REPLI
+#  Simule le compteur général (Master ESP32) sans matériel.
+#  Usage :  python simulate_master.py [puissance_W]
+#           (défaut : 200 W — mettre 500 pour le scénario B de l'audit)
 # ================================================================
 
 BROKER = "127.0.0.1"
 PORT = 1883
 SECRET = "SENTINEL_SECRET_2026"          # doit correspondre à DEVICE_SHARED_SECRET
-MAC_ADDRESS = "BBCCDDEEFF01"             # MAC fictive du Node
+MAC_ADDRESS = "AABBCCDD0001"             # MAC fictive du Master
 INTERVAL = 3                             # secondes
 
 POWER_W = float(sys.argv[1]) if len(sys.argv) > 1 else 200.0
-IS_ACTIVE = POWER_W > 0
 
 TOPIC_DATA = f"sbee/devices/{MAC_ADDRESS}/data"
 TOPIC_STATUS = f"sbee/devices/{MAC_ADDRESS}/status"
@@ -32,9 +28,9 @@ last_time = time.time()
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print(f"✅ Node connecté au broker ({BROKER}) — {POWER_W:.0f} W")
+        print(f"✅ Master connecté au broker ({BROKER}) — {POWER_W:.0f} W")
         status = {
-            "state": "ONLINE", "role": "NODE",
+            "state": "ONLINE", "role": "MASTER",
             "mac_address": MAC_ADDRESS, "secret_key": SECRET,
         }
         client.publish(TOPIC_STATUS, json.dumps(status), retain=True)
@@ -44,9 +40,9 @@ def on_connect(client, userdata, flags, rc):
 
 def make_client():
     try:
-        return mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, f"sentinel_node_sim_{MAC_ADDRESS}")
+        return mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, f"sentinel_master_sim_{MAC_ADDRESS}")
     except AttributeError:
-        return mqtt.Client(f"sentinel_node_sim_{MAC_ADDRESS}")
+        return mqtt.Client(f"sentinel_master_sim_{MAC_ADDRESS}")
 
 
 def run():
@@ -59,7 +55,7 @@ def run():
         print(f"❌ Impossible de se connecter au broker: {e}")
         return
     client.loop_start()
-    print(f"🚀 Simulation Node démarrée (P = {POWER_W:.0f} W). Ctrl+C pour arrêter.")
+    print(f"🚀 Simulation Master démarrée (P = {POWER_W:.0f} W). Ctrl+C pour arrêter.")
 
     try:
         while True:
@@ -68,30 +64,30 @@ def run():
             last_time = now
 
             voltage = 220.0 + random.uniform(-2, 2)
-            power = POWER_W + random.uniform(-2, 2) if IS_ACTIVE else 0.0
+            power = POWER_W + random.uniform(-2, 2)
             current = power / voltage if voltage > 0 else 0.0
-            pf = random.uniform(0.92, 0.98) if IS_ACTIVE else 0.0
+            pf = random.uniform(0.95, 0.99)
             freq = 50.0 + random.uniform(-0.1, 0.1)
             energy_kwh += (power / 1000.0) * dt_h
 
             payload = {
                 "mac_address": MAC_ADDRESS,
                 "secret_key": SECRET,
-                "role": "NODE",
+                "role": "MASTER",
                 "voltage_v": round(voltage, 1),
                 "current_a": round(current, 3),
                 "power_w": round(power, 1),
                 "energy_kwh": round(energy_kwh, 4),
                 "frequency_hz": round(freq, 2),
                 "pf": round(pf, 2),
-                "is_active": IS_ACTIVE,
+                "is_active": True,
                 "timestamp": int(now),
             }
             client.publish(TOPIC_DATA, json.dumps(payload))
-            print(f"📤 NODE    {payload['power_w']} W | {payload['energy_kwh']:.4f} kWh")
+            print(f"📤 MASTER  {payload['power_w']} W | {payload['voltage_v']} V")
             time.sleep(INTERVAL)
     except KeyboardInterrupt:
-        print("\n🛑 Node arrêté.")
+        print("\n🛑 Master arrêté.")
         client.loop_stop()
         client.disconnect()
 

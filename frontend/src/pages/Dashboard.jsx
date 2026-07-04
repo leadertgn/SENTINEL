@@ -29,12 +29,12 @@ const DeviceCard = ({ device }) => {
           <span className="font-bold text-slate-800 text-base">
             {device.name}
           </span>
-          <span className="text-[10px] text-slate-400 font-mono mt-0.5">
+          <span className="text-sm text-slate-600 font-mono mt-0.5">
             {device.mac}
           </span>
         </div>
         <div
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-bold uppercase tracking-wider
           ${
             isOnline
               ? "bg-green-100 text-green-700 border border-green-200"
@@ -42,7 +42,7 @@ const DeviceCard = ({ device }) => {
           }`}
         >
           <span
-            className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-green-500" : "bg-red-500"}`}
+            className={`h-2.5 w-2.5 rounded-full ${isOnline ? "bg-green-500" : "bg-red-500"}`}
           />
           {isOnline ? "En ligne" : "Hors ligne"}
         </div>
@@ -51,7 +51,7 @@ const DeviceCard = ({ device }) => {
       {/* Corps */}
       <div className="p-5">
         {/* Label et puissance principale */}
-        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-1">
+        <p className="text-sm text-slate-600 uppercase tracking-widest font-semibold mb-1">
           Puissance Active
         </p>
         <div className="flex items-baseline gap-1 mb-5">
@@ -60,7 +60,7 @@ const DeviceCard = ({ device }) => {
           >
             {(device.power || 0).toFixed(0)}
           </span>
-          <span className="text-lg font-bold text-slate-400">W</span>
+          <span className="text-lg font-bold text-slate-600">W</span>
         </div>
 
         {/* Métriques secondaires */}
@@ -87,7 +87,7 @@ const DeviceCard = ({ device }) => {
               key={label}
               className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2"
             >
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+              <p className="text-sm text-slate-600 uppercase tracking-wider font-semibold">
                 {label}
               </p>
               <p className="font-bold text-slate-700 text-base mt-0.5">
@@ -99,7 +99,7 @@ const DeviceCard = ({ device }) => {
 
         {/* Énergie cumulée */}
         <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
-          <span className="flex items-center gap-1 font-medium text-slate-400">
+          <span className="flex items-center gap-1 font-medium text-slate-600">
             <Zap className="w-3.5 h-3.5 text-yellow-500" /> Énergie cumulée
           </span>
           <span className="font-bold text-slate-700">
@@ -194,7 +194,7 @@ export default function Dashboard() {
 
   if (!telemetry.timestamp) {
     return (
-      <div className="h-96 flex flex-col items-center justify-center gap-3 text-slate-400">
+      <div className="h-96 flex flex-col items-center justify-center gap-3 text-slate-600">
         <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm font-medium">
           Synchronisation des flux temps réel…
@@ -205,9 +205,9 @@ export default function Dashboard() {
 
   const getStatusClasses = (status) => {
     if (status === "online")
-      return "bg-green-50 text-green-700 border-green-200";
-    if (status === "offline") return "bg-red-50 text-red-600 border-red-200";
-    return "bg-slate-100 text-slate-400 border-slate-200";
+      return "bg-green-100 text-green-800 border-green-300";
+    if (status === "offline") return "bg-red-100 text-red-700 border-red-300";
+    return "bg-slate-100 text-slate-600 border-slate-300";
   };
 
   const getIndicatorDot = (status) => {
@@ -217,7 +217,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 font-serif">
+    <div className="max-w-6xl mx-auto space-y-8">
       {/* ── BARRE D'ÉTAT DES INFRASTRUCTURES ── */}
       <section className="bg-white rounded-lg border-2 border-slate-200 shadow-sm p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
         {systemStates.map((sys, idx) => {
@@ -233,14 +233,14 @@ export default function Dashboard() {
                 <Icon className="w-5 h-5" />
               </div>
               <div className="flex flex-col">
-                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider font-sans">
+                <span className="text-sm text-slate-600 font-bold uppercase tracking-wider font-sans">
                   {sys.label}
                 </span>
                 <span className="flex items-center gap-1.5 mt-0.5">
                   <span
-                    className={`h-2 w-2 rounded-full ${getIndicatorDot(sys.status)}`}
+                    className={`h-3.5 w-3.5 rounded-full ${getIndicatorDot(sys.status)}`}
                   />
-                  <span className="text-sm font-bold text-slate-800 font-sans">
+                  <span className="text-base font-bold text-slate-900 font-sans">
                     {sys.text}
                   </span>
                 </span>
@@ -248,6 +248,52 @@ export default function Dashboard() {
             </div>
           );
         })}
+      </section>
+
+      {/* ── INDICATEURS ARRIVÉE GÉNÉRALE (Tension / Puissance / Intensité) ── */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="w-4 h-4 text-blue-600" />
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">
+            Arrivée Générale — Compteur Principal
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          {[
+            {
+              label: "Tension",
+              value: (telemetry.master.voltage || 0).toFixed(1),
+              unit: "V",
+            },
+            {
+              label: "Puissance Active",
+              value: (telemetry.master.power || 0).toFixed(0),
+              unit: "W",
+            },
+            {
+              label: "Intensité",
+              value: (telemetry.master.current || 0).toFixed(2),
+              unit: "A",
+            },
+          ].map(({ label, value, unit }) => (
+            <div
+              key={label}
+              className="bg-white rounded-xl border-2 border-slate-200 shadow-sm px-6 py-5 flex flex-col items-center text-center"
+            >
+              <p className="text-sm text-slate-600 uppercase tracking-widest font-bold mb-2">
+                {label}
+              </p>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-5xl font-extrabold text-[#1a2e4a] tracking-tight tabular-nums">
+                  {value}
+                </span>
+                <span className="text-2xl font-bold text-slate-600">
+                  {unit}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ── SECTION 1 : RELEVÉS INDIVIDUELS ── */}
@@ -297,7 +343,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-[10px] text-slate-400">
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-sm text-slate-600">
             <Zap className="w-3.5 h-3.5 text-yellow-500" /> Idéal pour repérer
             instantanément un oubli d'éclairage ou un court-circuit.
           </div>
@@ -308,18 +354,18 @@ export default function Dashboard() {
             <span className="text-xs font-bold text-slate-700">
               Répartition des charges
             </span>
-            <span className="text-[10px] text-slate-400 font-semibold uppercase">
+            <span className="text-sm text-slate-600 font-semibold uppercase">
               Bilan instantané
             </span>
           </div>
 
-          <div className="h-40 my-3">
+          <div className="h-56 my-3">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={auditData}
-                  innerRadius={50}
-                  outerRadius={68}
+                  innerRadius={68}
+                  outerRadius={95}
                   paddingAngle={5}
                   dataKey="value"
                   cornerRadius={4}
@@ -333,7 +379,7 @@ export default function Dashboard() {
                     backgroundColor: "#ffffff",
                     border: "1px solid #e2e8f0",
                     borderRadius: "8px",
-                    fontSize: "11px",
+                    fontSize: "15px",
                   }}
                   formatter={(v) => [`${Math.round(v)} W`]}
                 />
@@ -353,7 +399,7 @@ export default function Dashboard() {
                     className="w-2.5 h-2.5 rounded-full inline-block"
                     style={{ backgroundColor: item.color }}
                   />
-                  <span className="text-slate-500 text-[11px]">
+                  <span className="text-slate-500 text-sm">
                     {item.name}
                   </span>
                 </div>

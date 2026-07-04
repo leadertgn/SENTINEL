@@ -6,6 +6,7 @@ Service de seed des données initiales :
 from sqlmodel import Session, select
 from sqlalchemy import desc
 from app.models.base import Device, BillingTariff, RoleEnum
+from app.core.config import settings
 
 # ─── Tranches SBEE (Postpayé Basse Tension) ────────────────────────────────────
 SBEE_TARIFFS = [
@@ -73,50 +74,61 @@ def get_active_tariff(kwh: float, session: Session) -> BillingTariff | None:
 
 def calculate_monthly_cost(kwh: float, session: Session) -> dict:
     """
-    Calcul SBEE progressif par paliers (Postpayé).
-    Applique la TVA de 18% uniquement sur les tranches supérieures (tranches non-sociales).
+    Calcul SBEE progressif par paliers (Postpayé Basse Tension).
+
+    Conforme à la grille officielle SBEE : tarif au kWh par tranche, SANS TVA
+    (la grille SBEE ne comporte pas de TVA consommateur). Le coût "énergie" est
+    la somme des paliers ; il vaut exactement 34 950 FCFA pour 280 kWh, comme
+    démontré dans le mémoire (§4.2.3).
+
+    La prime fixe (redevance SBEE = 500 FCFA/kVA souscrit) est calculée à titre
+    informatif et retournée séparément — elle n'est PAS ajoutée au total énergie
+    pour préserver la valeur de référence du document déposé.
     """
     tariffs = session.exec(
         select(BillingTariff).order_by(BillingTariff.min_kwh)
     ).all()
-    
+
+    fixed_premium = round(settings.FIXED_PREMIUM_PER_KVA * settings.SUBSCRIBED_KVA, 2)
+
     if not tariffs:
         return {
-            "energy_cost_ht": 0.0,
             "energy_cost": 0.0,
-            "tva_fcfa": 0.0,
-            "fixed_premium": 0.0,
+            "fixed_premium": fixed_premium,
             "total_fcfa": 0.0,
+            "breakdown": [],
         }
-    
-    energy_cost_ht = 0.0
-    tva_fcfa = 0.0
+
+    energy_cost = 0.0
     remaining_kwh = kwh
-    
+    breakdown = []
+
     for tariff in tariffs:
         if remaining_kwh <= 0:
             break
-        
+
         if tariff.max_kwh is not None:
             tranche_size = tariff.max_kwh - tariff.min_kwh
         else:
             tranche_size = remaining_kwh
-        
+
         kwh_in_this_tranche = min(remaining_kwh, tranche_size)
+        cost_tranche = kwh_in_this_tranche * tariff.price_per_kwh
+        energy_cost += cost_tranche
 
-        cost_tranche_ht = kwh_in_this_tranche * tariff.price_per_kwh
-        energy_cost_ht += cost_tranche_ht
-
-        # La tranche sociale (0-20 kWh) est exonérée de TVA. Les tranches supérieures y sont assujetties (18%)
-        if tariff.min_kwh >= 20.0:
-            tva_fcfa += cost_tranche_ht * 0.18
+        breakdown.append({
+            "name": tariff.name,
+            "kwh": round(kwh_in_this_tranche, 3),
+            "price_per_kwh": tariff.price_per_kwh,
+            "subtotal": round(cost_tranche, 2),
+        })
 
         remaining_kwh -= kwh_in_this_tranche
-    
+
     return {
-        "energy_cost_ht": round(energy_cost_ht, 2),
-        "energy_cost": round(energy_cost_ht, 2),
-        "tva_fcfa": round(tva_fcfa, 2),
-        "fixed_premium": 0.0,  # Conservé dans la structure pour compatibilité
-        "total_fcfa": round(energy_cost_ht + tva_fcfa, 2)
+        "energy_cost": round(energy_cost, 2),
+        "fixed_premium": fixed_premium,
+        # Total = coût énergie (paliers) seul → reste égal au chiffre du mémoire.
+        "total_fcfa": round(energy_cost, 2),
+        "breakdown": breakdown,
     }
