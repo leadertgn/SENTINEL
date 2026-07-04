@@ -29,7 +29,13 @@ async def device_watchdog():
                 for d in devices:
                     last_t = session.exec(select(Telemetry).where(Telemetry.device_id == d.id).order_by(desc(Telemetry.timestamp))).first()
                     if last_t:
-                        if datetime.now(timezone.utc) - last_t.timestamp > timedelta(minutes=3):
+                        # SQLite relit les datetimes sans fuseau (naive) : on les
+                        # normalise en UTC avant toute soustraction pour éviter
+                        # « can't subtract offset-naive and offset-aware datetimes ».
+                        last_ts = last_t.timestamp
+                        if last_ts.tzinfo is None:
+                            last_ts = last_ts.replace(tzinfo=timezone.utc)
+                        if datetime.now(timezone.utc) - last_ts > timedelta(minutes=3):
                             d.status = StatusEnum.OFFLINE
                             d.is_active = False # On suppose coupé par sécurité
                             session.add(d)

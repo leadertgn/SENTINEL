@@ -8,8 +8,13 @@
 //          publication du payload JSON.
 // ================================================================
 
-// Connecte au WiFi (avec timeout et redémarrage si échec)
-void wifi_connect();
+// Connecte au WiFi : essai des identifiants "domicile", sinon portail captif
+// (mode AP) pour choisir le réseau + l'IP du broker (sauvegardés en Flash).
+void net_begin();
+
+// Hook défini dans main.cpp : appelé quand le portail de configuration s'ouvre
+// (permet, côté Master, d'afficher l'instruction sur le LCD).
+void net_on_portal_open(const char* apName);
 
 // Configure le client MQTT et établit la première connexion
 void mqtt_setup();

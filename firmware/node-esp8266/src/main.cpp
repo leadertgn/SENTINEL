@@ -67,7 +67,28 @@ void setup() {
     Serial.println("✅ SYSTEME PRET");
 }
 
+// Affiché quand le portail de configuration WiFi s'ouvre (le Node n'a pas de LCD,
+// on se contente du moniteur série).
+void net_on_portal_open(const char* apName) {
+    Serial.printf("🛜 Portail WiFi ouvert — connectez-vous au réseau : %s (mdp: %s)\n",
+                  apName, WIFI_AP_PASSWORD);
+}
+
+// Reconnexion WiFi en arrière-plan (NON bloquante) : si la liaison tombe ou
+// n'a jamais abouti, on relance une association toutes les 15 s sans figer la
+// boucle. reconnect() réutilise les identifiants mémorisés (domicile ou portail)
+// sans les écraser.
+void wifi_maintain() {
+    static unsigned long lastTry = 0;
+    if (WiFi.status() == WL_CONNECTED) return;
+    if (lastTry != 0 && (millis() - lastTry) < 15000) return;
+    lastTry = millis();
+    Serial.println("📶 WiFi absent — nouvelle tentative en arrière-plan...");
+    WiFi.reconnect();
+}
+
 void loop() {
+    wifi_maintain();
     mqtt_loop();
     handle_leds();
     

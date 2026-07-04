@@ -1,6 +1,7 @@
 #include "mqtt_handler.h"
 #include "config.h"
 #include <WiFi.h>
+#include <WiFiManager.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -8,6 +9,39 @@
 // ── Clients réseau (statiques = une seule instance) ───────────────
 static WiFiClient   wifiClient;
 static PubSubClient mqttClient(wifiClient);
+
+// ── Adresse du broker MQTT en RUNTIME ─────────────────────────────
+// Valeur par défaut = celle de secrets.h, mais écrasable depuis le
+// portail de configuration (champ dédié) et persistée dans LittleFS.
+// Fini le reflash quand l'IP du PC change (ex: 192.168.100.12 → .58).
+static char mqttBroker[40] = MQTT_BROKER;
+
+static void load_net_config() {
+    if (!LittleFS.exists("/netcfg.json")) return;
+    File f = LittleFS.open("/netcfg.json", "r");
+    if (!f) return;
+    JsonDocument doc;
+    if (deserializeJson(doc, f) == DeserializationError::Ok) {
+        const char* b = doc["broker"] | "";
+        if (strlen(b) > 6) {
+            strncpy(mqttBroker, b, sizeof(mqttBroker) - 1);
+            mqttBroker[sizeof(mqttBroker) - 1] = '\0';
+            Serial.printf("🗄️ Broker chargé depuis la Flash : %s\n", mqttBroker);
+        }
+    }
+    f.close();
+}
+
+static void save_net_config() {
+    File f = LittleFS.open("/netcfg.json", "w");
+    if (!f) return;
+    JsonDocument doc;
+    doc["broker"] = mqttBroker;
+    serializeJson(doc, f);
+    f.close();
+}
+
+static bool s_shouldSave = false;
 
 // ── Identifiants dynamiques (générés depuis le MAC WiFi) ──────────
 static String s_deviceMac;
@@ -59,35 +93,60 @@ static void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  WiFi — Connexion avec timeout et redémarrage ESP32 si échec
+//  Réseau — identifiants "domicile" d'abord, sinon portail captif AP
 // ─────────────────────────────────────────────────────────────────
-void wifi_connect() {
-    Serial.printf("📶 Connexion WiFi → SSID : %s\n", WIFI_SSID);
+// 1) Essai rapide (8s) des identifiants connus de secrets.h (NON persistés,
+//    pour ne pas écraser un réseau configuré sur place lors d'une démo).
+// 2) Échec → WiFiManager : identifiants déjà sauvegardés puis, à défaut,
+//    ouverture d'un point d'accès listant les réseaux + un champ « IP broker ».
+// 3) Le choix (réseau + broker) est mémorisé en Flash pour les prochains boots.
+// Ne redémarre jamais l'ESP : au pire, mode hors-ligne (file d'attente Flash).
+void net_begin() {
+    load_net_config();
+
+    // 1) Tentative rapide avec le réseau "domicile" (identifiants de secrets.h)
+    WiFi.persistent(false); // ne pas écraser un réseau mémorisé par le portail
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.printf("📶 Essai WiFi domicile → %s ", WIFI_SSID);
+    unsigned long t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) { delay(250); Serial.print("."); }
+    Serial.println();
 
-    int retries = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-        retries++;
-        if (retries >= WIFI_MAX_RETRIES) {
-            Serial.println("\n❌ WiFi timeout — mode hors-ligne activé...");
-            break; // On ne redémarre plus, on passe en mode hors-ligne
+    if (WiFi.status() != WL_CONNECTED) {
+        // 2) Portail captif : réseaux à proximité + champ IP du broker
+        Serial.println("🛜 WiFi domicile indisponible — ouverture du portail de configuration.");
+        WiFi.persistent(true); // le réseau choisi ici doit survivre au redémarrage
+
+        WiFiManager wm;
+        wm.setConfigPortalTimeout(180); // 3 min max, puis on continue hors-ligne
+        wm.setAPCallback([](WiFiManager* mgr) {
+            net_on_portal_open(mgr->getConfigPortalSSID().c_str());
+        });
+        wm.setSaveConfigCallback([]() { s_shouldSave = true; });
+
+        WiFiManagerParameter p_broker("broker", "IP du broker MQTT (PC hote)", mqttBroker, sizeof(mqttBroker) - 1);
+        wm.addParameter(&p_broker);
+
+        wm.autoConnect(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+
+        if (s_shouldSave) {
+            strncpy(mqttBroker, p_broker.getValue(), sizeof(mqttBroker) - 1);
+            mqttBroker[sizeof(mqttBroker) - 1] = '\0';
+            save_net_config();
+            Serial.printf("💾 Broker MQTT enregistré : %s\n", mqttBroker);
         }
+        WiFi.mode(WIFI_STA); // sortie propre du mode AP
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("\n✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
-    }
+    if (WiFi.status() == WL_CONNECTED)
+        Serial.printf("✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
+    else
+        Serial.println("⚠️ Pas de WiFi — mode hors-ligne (les mesures sont mises en file).");
 
-#if LOCAL_MODE
-    s_deviceMac = DEVICE_MAC_LOCAL;
-#else
     s_deviceMac = WiFi.macAddress();
     s_deviceMac.replace(":", "");
-#endif
 
     s_topicData   = "sbee/devices/" + s_deviceMac + "/data";
     s_topicCmd    = "sbee/devices/" + s_deviceMac + "/cmd";
@@ -97,33 +156,38 @@ void wifi_connect() {
 // ─────────────────────────────────────────────────────────────────
 //  MQTT — Connexion (et reconnexion automatique)
 // ─────────────────────────────────────────────────────────────────
-static void mqtt_connect() {
-    if (WiFi.status() != WL_CONNECTED) return; // Pas de WiFi = Pas de MQTT
+// Tentative de connexion MQTT NON bloquante : une seule tentative, espacée de
+// MQTT_RECONNECT_MS. Ne bloque JAMAIS setup() ni loop() même si le broker est
+// injoignable — l'écran LCD, les LEDs et la boucle continuent de tourner.
+static unsigned long s_lastMqttAttempt = 0;
 
-    while (!mqttClient.connected() && WiFi.status() == WL_CONNECTED) {
-        Serial.printf("🔌 Connexion MQTT → %s:%d\n", MQTT_BROKER, MQTT_PORT);
-        String clientId = "SENTINEL_MASTER_" + s_deviceMac;
-        String willPayload = "{\"state\":\"OFFLINE\",\"mac_address\":\"" + s_deviceMac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
-        bool connected = false;
+static void mqtt_try_connect() {
+    if (WiFi.status() != WL_CONNECTED || mqttClient.connected()) return;
+    // Espacement des tentatives (sans delay bloquant)
+    if (s_lastMqttAttempt != 0 && (millis() - s_lastMqttAttempt) < MQTT_RECONNECT_MS) return;
+    s_lastMqttAttempt = millis();
 
-        if (strlen(MQTT_USER) > 0) {
-            connected = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS, s_topicStatus.c_str(), 0, true, willPayload.c_str());
-        } else {
-            connected = mqttClient.connect(clientId.c_str(), "", "", s_topicStatus.c_str(), 0, true, willPayload.c_str());
-        }
+    Serial.printf("🔌 Connexion MQTT → %s:%d\n", mqttBroker, MQTT_PORT);
+    String clientId = "SENTINEL_MASTER_" + s_deviceMac;
+    String willPayload = "{\"state\":\"OFFLINE\",\"mac_address\":\"" + s_deviceMac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
+    bool connected = false;
 
-        if (connected) {
-            Serial.println("✅ MQTT connecté !");
-            String statusPayload = "{\"state\":\"ONLINE\",\"role\":\"MASTER\",\"mac_address\":\"" + s_deviceMac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
-            mqttClient.publish(s_topicStatus.c_str(), statusPayload.c_str(), true);
-            mqttClient.subscribe(s_topicCmd.c_str());
-            
-            // Vidage de la file d'attente (si données hors-ligne)
-            flush_queue();
-        } else {
-            Serial.printf("❌ Échec MQTT (code: %d) — nouvelle tentative dans %dms\n", mqttClient.state(), MQTT_RECONNECT_MS);
-            delay(MQTT_RECONNECT_MS);
-        }
+    if (strlen(MQTT_USER) > 0) {
+        connected = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS, s_topicStatus.c_str(), 0, true, willPayload.c_str());
+    } else {
+        connected = mqttClient.connect(clientId.c_str(), "", "", s_topicStatus.c_str(), 0, true, willPayload.c_str());
+    }
+
+    if (connected) {
+        Serial.println("✅ MQTT connecté !");
+        String statusPayload = "{\"state\":\"ONLINE\",\"role\":\"MASTER\",\"mac_address\":\"" + s_deviceMac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
+        mqttClient.publish(s_topicStatus.c_str(), statusPayload.c_str(), true);
+        mqttClient.subscribe(s_topicCmd.c_str());
+
+        // Vidage de la file d'attente (si données hors-ligne)
+        flush_queue();
+    } else {
+        Serial.printf("❌ Échec MQTT (code: %d) — nouvelle tentative dans %dms\n", mqttClient.state(), MQTT_RECONNECT_MS);
     }
 }
 
@@ -131,11 +195,11 @@ static void mqtt_connect() {
 //  API publique
 // ─────────────────────────────────────────────────────────────────
 void mqtt_setup() {
-    wifi_connect();
-    mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+    net_begin(); // WiFi (domicile → portail AP) + chargement de l'IP broker
+    mqttClient.setServer(mqttBroker, MQTT_PORT);
     mqttClient.setCallback(onMqttMessage);
     mqttClient.setBufferSize(512);
-    if (WiFi.status() == WL_CONNECTED) mqtt_connect();
+    mqtt_try_connect(); // 1 tentative non bloquante — setup() se termine toujours
 }
 
 void mqtt_loop() {
@@ -143,7 +207,7 @@ void mqtt_loop() {
         return; // Hors-ligne, auto-reconnect géré en tâche de fond
     }
     if (!mqttClient.connected()) {
-        mqtt_connect();
+        mqtt_try_connect(); // reconnexion non bloquante
     }
     mqttClient.loop();
 }

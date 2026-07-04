@@ -9,10 +9,56 @@
 #include "mqtt_handler.h"
 #include <WiFi.h>
 
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+// Le LCD est instancié dynamiquement une fois son adresse détectée (0x27 ou 0x3F).
+static LiquidCrystal_I2C* lcd = nullptr;
+static uint8_t lcdAddr = 0;
 static unsigned long lastPublishMs = 0;
 bool lcdAvailable = false;
 unsigned long activityFlashUntil = 0;
+
+// ─────────────────────────────────────────────────────────────────
+//  Scan du bus I2C + initialisation automatique du LCD
+//  Journalise toutes les adresses présentes puis sélectionne le LCD.
+// ─────────────────────────────────────────────────────────────────
+void i2c_scan_and_init_lcd() {
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+
+    Serial.println("🔎 Scan du bus I2C (SDA=21, SCL=22)...");
+    int found = 0;
+    bool has27 = false, has3F = false;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("   ✓ Périphérique I2C trouvé à 0x%02X\n", addr);
+            found++;
+            if (addr == LCD_ADDR)     has27 = true;
+            if (addr == LCD_ADDR_ALT) has3F = true;
+        }
+    }
+    if (found == 0) {
+        Serial.println("   ✗ Aucun périphérique I2C détecté.");
+        Serial.println("     → Vérifier : GND commun ESP32/convertisseur/LCD, LCD alimenté en 5V,");
+        Serial.println("       SDA/SCL non croisés, convertisseur bidirectionnel (I2C).");
+    }
+
+    // Sélection de l'adresse du LCD : 0x27 en priorité, sinon 0x3F
+    if (has27)      lcdAddr = LCD_ADDR;
+    else if (has3F) lcdAddr = LCD_ADDR_ALT;
+
+    if (lcdAddr != 0) {
+        Serial.printf("📺 LCD détecté sur 0x%02X — initialisation.\n", lcdAddr);
+        lcd = new LiquidCrystal_I2C(lcdAddr, LCD_COLS, LCD_ROWS);
+        lcd->init();
+        lcd->backlight();
+        lcd->clear();
+        lcd->setCursor(0, 0);
+        lcd->print("SENTINEL INIT...");
+        lcdAvailable = true;
+    } else {
+        Serial.println("⚠️ LCD non détecté (ni 0x27 ni 0x3F). Poursuite sans afficheur.");
+        lcdAvailable = false;
+    }
+}
 
 void handle_leds() {
     unsigned long now = millis();
@@ -52,18 +98,8 @@ void setup() {
         Serial.println("📂 LittleFS initialisé");
     }
 
-    // Test I2C pour le LCD
-    Wire.begin(21, 22);
-    Wire.beginTransmission(0x27);
-    if (Wire.endTransmission() == 0) {
-        Serial.println("📺 LCD Détecté sur 0x27");
-        lcdAvailable = true;
-        lcd.init();
-        lcd.backlight();
-        lcd.print("SENTINEL INIT...");
-    } else {
-        Serial.println("⚠️ LCD non détecté (Vérifier câblage/adresse)");
-    }
+    // Scan I2C + détection automatique de l'adresse du LCD (0x27 / 0x3F)
+    i2c_scan_and_init_lcd();
 
     pzem_init();
     mqtt_setup();
@@ -78,13 +114,40 @@ void setup() {
         }
     }
 
-    if (lcdAvailable) {
-        lcd.clear();
-        lcd.print("SYSTEME PRET");
+    if (lcdAvailable && lcd) {
+        lcd->clear();
+        lcd->print("SYSTEME PRET");
     }
 }
 
+// Affiché sur le LCD quand le portail de configuration WiFi s'ouvre (mode AP) :
+// l'opérateur voit le nom du réseau auquel se connecter avec son téléphone.
+void net_on_portal_open(const char* apName) {
+    Serial.printf("🛜 Portail WiFi ouvert — réseau : %s (mdp: %s)\n", apName, WIFI_AP_PASSWORD);
+    if (lcdAvailable && lcd) {
+        lcd->clear();
+        lcd->setCursor(0, 0);
+        lcd->print("CONFIG WIFI:");
+        lcd->setCursor(0, 1);
+        lcd->print(apName);
+    }
+}
+
+// Reconnexion WiFi en arrière-plan (NON bloquante) : si la liaison tombe, on
+// relance une association toutes les 15 s sans figer la boucle (l'écran, les
+// LEDs et le PZEM continuent de tourner). On utilise reconnect() (identifiants
+// mémorisés) pour ne PAS écraser un réseau configuré via le portail.
+void wifi_maintain() {
+    static unsigned long lastTry = 0;
+    if (WiFi.status() == WL_CONNECTED) return;
+    if (lastTry != 0 && (millis() - lastTry) < 15000) return;
+    lastTry = millis();
+    Serial.println("📶 WiFi absent — nouvelle tentative en arrière-plan...");
+    WiFi.reconnect();
+}
+
 void loop() {
+    wifi_maintain();
     mqtt_loop();
     handle_leds();
     
@@ -123,12 +186,12 @@ void loop() {
             publish_telemetry(data, epochToSend);
             activityFlashUntil = millis() + 100; // Flash de 100ms
             
-            if (lcdAvailable) {
-                lcd.setCursor(0,0);
-                lcd.print("U:"); lcd.print((int)data.voltage_v); lcd.print("V ");
-                lcd.print("P:"); lcd.print((int)data.power_w); lcd.print("W   ");
-                lcd.setCursor(0,1);
-                lcd.print("E:"); lcd.print(data.energy_kwh, 3); lcd.print("kWh");
+            if (lcdAvailable && lcd) {
+                lcd->setCursor(0,0);
+                lcd->print("U:"); lcd->print((int)data.voltage_v); lcd->print("V ");
+                lcd->print("P:"); lcd->print((int)data.power_w); lcd->print("W   ");
+                lcd->setCursor(0,1);
+                lcd->print("E:"); lcd->print(data.energy_kwh, 3); lcd->print("kWh   ");
             }
         }
     }

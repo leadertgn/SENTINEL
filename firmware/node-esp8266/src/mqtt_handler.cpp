@@ -1,4 +1,5 @@
 #include <ESP8266WiFi.h>
+#include <WiFiManager.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -10,6 +11,86 @@ static PubSubClient mqttClient(espClient);
 static String s_mac;
 static bool s_relayState = false;
 extern unsigned long lastPublishMs; // Expose la variable de main.cpp
+
+// ── Adresse du broker MQTT en RUNTIME ─────────────────────────────
+// Défaut = secrets.h, écrasable via le portail de configuration (champ
+// dédié) et persistée dans LittleFS. Plus besoin de reflasher si l'IP
+// du PC hôte change entre le domicile et la salle de soutenance.
+static char mqttBroker[40] = MQTT_BROKER;
+static bool s_shouldSave = false;
+
+static void load_net_config() {
+    if (!LittleFS.exists("/netcfg.json")) return;
+    File f = LittleFS.open("/netcfg.json", "r");
+    if (!f) return;
+    JsonDocument doc;
+    if (deserializeJson(doc, f) == DeserializationError::Ok) {
+        const char* b = doc["broker"] | "";
+        if (strlen(b) > 6) {
+            strncpy(mqttBroker, b, sizeof(mqttBroker) - 1);
+            mqttBroker[sizeof(mqttBroker) - 1] = '\0';
+            Serial.printf("🗄️ Broker chargé depuis la Flash : %s\n", mqttBroker);
+        }
+    }
+    f.close();
+}
+
+static void save_net_config() {
+    File f = LittleFS.open("/netcfg.json", "w");
+    if (!f) return;
+    JsonDocument doc;
+    doc["broker"] = mqttBroker;
+    serializeJson(doc, f);
+    f.close();
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Réseau — identifiants "domicile" d'abord, sinon portail captif AP
+// ─────────────────────────────────────────────────────────────────
+void net_begin() {
+    load_net_config();
+
+    // 1) Tentative rapide (8s) avec le réseau "domicile" de secrets.h
+    WiFi.persistent(false); // ne pas écraser un réseau mémorisé par le portail
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.printf("📶 Essai WiFi domicile → %s ", WIFI_SSID);
+    unsigned long t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) { delay(250); Serial.print("."); }
+    Serial.println();
+
+    if (WiFi.status() != WL_CONNECTED) {
+        // 2) Portail captif : réseaux à proximité + champ IP du broker
+        Serial.println("🛜 WiFi domicile indisponible — ouverture du portail de configuration.");
+        WiFi.persistent(true);
+
+        WiFiManager wm;
+        wm.setConfigPortalTimeout(180); // 3 min max, puis mode hors-ligne
+        wm.setAPCallback([](WiFiManager* mgr) {
+            net_on_portal_open(mgr->getConfigPortalSSID().c_str());
+        });
+        wm.setSaveConfigCallback([]() { s_shouldSave = true; });
+
+        WiFiManagerParameter p_broker("broker", "IP du broker MQTT (PC hote)", mqttBroker, sizeof(mqttBroker) - 1);
+        wm.addParameter(&p_broker);
+
+        wm.autoConnect(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+
+        if (s_shouldSave) {
+            strncpy(mqttBroker, p_broker.getValue(), sizeof(mqttBroker) - 1);
+            mqttBroker[sizeof(mqttBroker) - 1] = '\0';
+            save_net_config();
+            Serial.printf("💾 Broker MQTT enregistré : %s\n", mqttBroker);
+        }
+        WiFi.mode(WIFI_STA);
+    }
+
+    if (WiFi.status() == WL_CONNECTED)
+        Serial.printf("✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
+    else
+        Serial.println("⚠️ Pas de WiFi — mode hors-ligne (les mesures sont mises en file).");
+}
 
 bool mqtt_connected() {
     return mqttClient.connected();
@@ -78,32 +159,19 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 }
 
 void mqtt_setup() {
-    WiFi.mode(WIFI_STA);
-    WiFi.setAutoReconnect(true);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    
-    int retries = 0;
-    while (WiFi.status() != WL_CONNECTED) { 
-        delay(500); 
-        Serial.print(".");
-        retries++;
-        if (retries >= WIFI_MAX_RETRIES) {
-            Serial.println("\n❌ WiFi timeout — mode hors-ligne activé...");
-            break; // Mode hors-ligne
-        }
-    }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("\n✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
-    }
-    
+    net_begin(); // WiFi (domicile → portail AP) + chargement de l'IP broker
+
     s_mac = WiFi.macAddress();
     s_mac.replace(":", "");
 
-    mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+    mqttClient.setServer(mqttBroker, MQTT_PORT);
     mqttClient.setCallback(onMqttMessage);
     mqttClient.setBufferSize(512);
 }
+
+// Reconnexion MQTT NON bloquante : une tentative espacée de MQTT_RECONNECT_MS,
+// sans delay(), pour ne jamais figer la boucle si le broker est injoignable.
+static unsigned long s_lastMqttAttempt = 0;
 
 void mqtt_loop() {
     if (WiFi.status() != WL_CONNECTED) {
@@ -111,17 +179,18 @@ void mqtt_loop() {
     }
 
     if (!mqttClient.connected()) {
-        Serial.printf("🔌 Tentative connexion MQTT Node (%s)...\n", s_mac.c_str());
-        
-        String willTopic = "sbee/devices/" + s_mac + "/status";
-        String willPayload = "{\"state\":\"OFFLINE\",\"mac_address\":\"" + s_mac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
-        
-        if (mqttClient.connect(s_mac.c_str(), "", "", willTopic.c_str(), 0, true, willPayload.c_str())) {
-            Serial.println("✅ MQTT Connecté");
-            mqttClient.subscribe(("sbee/devices/" + s_mac + "/cmd").c_str());
-            flush_queue(); // Vidage dès la connexion réussie
-        } else {
-            delay(5000);
+        if (s_lastMqttAttempt == 0 || (millis() - s_lastMqttAttempt) >= MQTT_RECONNECT_MS) {
+            s_lastMqttAttempt = millis();
+            Serial.printf("🔌 Tentative connexion MQTT Node (%s)...\n", s_mac.c_str());
+
+            String willTopic = "sbee/devices/" + s_mac + "/status";
+            String willPayload = "{\"state\":\"OFFLINE\",\"mac_address\":\"" + s_mac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
+
+            if (mqttClient.connect(s_mac.c_str(), "", "", willTopic.c_str(), 0, true, willPayload.c_str())) {
+                Serial.println("✅ MQTT Connecté");
+                mqttClient.subscribe(("sbee/devices/" + s_mac + "/cmd").c_str());
+                flush_queue(); // Vidage dès la connexion réussie
+            }
         }
     }
     mqttClient.loop();

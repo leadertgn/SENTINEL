@@ -29,4 +29,11 @@
 #define MQTT_RECONNECT_MS     5000    
 #define WIFI_MAX_RETRIES      20    
 
+// ─── Portail de configuration WiFi (mode AP de secours) ──────────
+// Point d'accès ouvert si le WiFi "domicile" est indisponible :
+// on s'y connecte au téléphone pour choisir le réseau + l'IP du broker,
+// sauvegardés en Flash pour les prochains démarrages.
+#define WIFI_AP_SSID      "SENTINEL-Node-Setup"
+#define WIFI_AP_PASSWORD  "sentinel2026"
+
 #include "secrets.h"
