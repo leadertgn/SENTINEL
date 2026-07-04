@@ -61,7 +61,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-[1100px] mx-auto space-y-8">
       {/* Notification Toast ou Inline */}
       {message && (
         <div

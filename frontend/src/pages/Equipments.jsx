@@ -114,7 +114,7 @@ export default function Equipments() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-[1400px] mx-auto space-y-6">
       <Toast
         message={toast?.message}
         type={toast?.type}

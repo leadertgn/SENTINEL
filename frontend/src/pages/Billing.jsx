@@ -61,7 +61,6 @@ export default function Billing() {
   const currentKwh = currentBilling?.kwh_month ?? 0;
   const totalFcfa =
     currentBilling?.total_fcfa ?? currentBilling?.cost_fcfa ?? 0;
-  const fixedPremium = currentBilling?.fixed_premium ?? 0;
   const activeTariff = currentBilling?.active_tariff ?? "—";
   const socialMax = (tariffs && tariffs[0]?.max_kwh) || 20;
   const progress = Math.min((currentKwh / socialMax) * 100, 100);
@@ -75,7 +74,7 @@ export default function Billing() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="max-w-[1400px] mx-auto space-y-8">
       {/* ── SECTION 1 : FACTURE MENSUELLE EN COURS ── */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Carte Facture */}
@@ -110,28 +109,14 @@ export default function Billing() {
             </p>
           </div>
           <div className="mt-5 pt-4 border-t border-slate-100 space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="border border-slate-200 rounded px-3 py-2 bg-slate-50">
-                <p className="text-sm text-slate-600 uppercase tracking-wider">
-                  Coût énergie (paliers)
-                </p>
-                <p className="font-bold text-slate-800">
-                  {totalFcfa.toLocaleString("fr-FR")} FCFA
-                </p>
-              </div>
-              <div className="border border-slate-200 rounded px-3 py-2 bg-slate-50">
-                <p className="text-sm text-slate-600 uppercase tracking-wider">
-                  Prime fixe SBEE
-                </p>
-                <p className="font-bold text-slate-800">
-                  {fixedPremium.toLocaleString("fr-FR")} FCFA
-                </p>
-              </div>
+            <div className="border border-slate-200 rounded px-3 py-2 bg-slate-50">
+              <p className="text-sm text-slate-600 uppercase tracking-wider">
+                Coût énergie (paliers SBEE)
+              </p>
+              <p className="font-bold text-slate-800 text-lg">
+                {totalFcfa.toLocaleString("fr-FR")} FCFA
+              </p>
             </div>
-            <p className="text-sm text-slate-600 leading-snug">
-              Prime fixe = 500 FCFA/kVA souscrit (redevance SBEE), affichée à part
-              — non incluse dans le coût énergie.
-            </p>
             <div className="flex items-center justify-between">
               <span className="text-xs text-slate-600">Tranche active :</span>
               <span
@@ -282,10 +267,6 @@ export default function Billing() {
                   </tfoot>
                 </table>
               </div>
-              <p className="px-4 py-2 text-sm text-slate-600 bg-white border-t border-slate-100">
-                + Prime fixe SBEE : {simResult.fixed_premium?.toLocaleString("fr-FR")}{" "}
-                FCFA (500 FCFA/kVA souscrit, hors coût énergie).
-              </p>
             </div>
           )}
         </div>

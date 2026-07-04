@@ -217,7 +217,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="max-w-[1400px] mx-auto space-y-8">
       {/* ── BARRE D'ÉTAT DES INFRASTRUCTURES ── */}
       <section className="bg-white rounded-lg border-2 border-slate-200 shadow-sm p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
         {systemStates.map((sys, idx) => {
