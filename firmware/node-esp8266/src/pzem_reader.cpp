@@ -5,6 +5,8 @@
 #include "config.h"
 
 #if !SIMULATION_MODE
+  // PZEM sur SoftwareSerial (D5/D6) → l'UART0 (USB) reste libre pour le debug
+  // au moniteur série du PC. Câblage direct (sans diviseur).
   SoftwareSerial pzemSWSerial(PZEM_RX_PIN, PZEM_TX_PIN);
   PZEM004Tv30 pzem(pzemSWSerial);
 #endif
@@ -14,11 +16,14 @@ static unsigned long s_lastReadMs = 0;
 
 void pzem_init() {
 #if SIMULATION_MODE
-    Serial.println("📊 [NODE] MODE SIMULATION ACTIVÉ");
+    DBG.println("📊 [NODE] MODE SIMULATION ACTIVÉ");
     randomSeed(analogRead(0));
 #else
-    Serial.println("📡 [NODE] Initialisation PZEM SoftwareSerial...");
-    delay(1000);
+    // PZEM déjà initialisé (UART0 à 9600 par le constructeur). Démarrage rapide :
+    // le board de remplacement lit correctement, le scanner de diagnostic n'est
+    // plus nécessaire (il retardait la 1ʳᵉ publication d'environ 9 s).
+    DBG.println("📡 [NODE] PZEM prêt (SoftwareSerial D5/D6 — debug sur USB).");
+    delay(200);
 #endif
 }
 
@@ -32,7 +37,7 @@ SensorData read_sensor(bool relayState) {
 
     float v = 220.0f + (float)random(-5, 6) / 10.0f; // Variation douce de la tension
     float p = relayState ? (1000.0f + (float)random(-10, 11)) : 0.0f; // Charge stable à ~1000W
-    
+
     s_simEnergyKwh += (p / 1000.0f) * dt_h;
 
     data.valid           = true;
@@ -47,6 +52,7 @@ SensorData read_sensor(bool relayState) {
     float v = pzem.voltage();
     if (isnan(v)) {
         data.valid = false;
+        DBG.println("🔇 [PZEM Node] Aucune réponse (NaN) — vérifier câblage PZEM D5/D6 + alim 220V/5V.");
     } else {
         data.valid = true;
         data.voltage_v = v;
@@ -55,6 +61,9 @@ SensorData read_sensor(bool relayState) {
         data.energy_kwh = pzem.energy();
         data.frequency_hz = pzem.frequency();
         data.power_factor = pzem.pf();
+        DBG.printf("📈 [PZEM Node] U=%.1fV  I=%.3fA  P=%.1fW  E=%.3fkWh  F=%.1fHz  PF=%.2f\n",
+                   data.voltage_v, data.current_a, data.power_w,
+                   data.energy_kwh, data.frequency_hz, data.power_factor);
     }
 #endif
     return data;

@@ -32,6 +32,19 @@ _broadcast_queue: asyncio.Queue | None = None
 VOLTAGE_MIN = 180.0
 VOLTAGE_MAX = 250.0
 
+# Fraîcheur d'une télémétrie pour l'affichage LIVE (secondes). Au-delà, l'appareil
+# est considéré comme ne rapportant plus : ses mesures instantanées (P, U, I, kWh)
+# sont ramenées à 0 pour le live. Cela évite qu'une vieille ligne — typiquement
+# l'historique injecté (seed) — s'affiche comme mesure courante.
+TELEMETRY_FRESH_S = 180.0
+
+def _is_fresh(ts) -> bool:
+    if ts is None:
+        return False
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - ts).total_seconds() < TELEMETRY_FRESH_S
+
 
 def sim_is_active() -> bool:
     """Vrai si une simulation de tension est en cours (non expirée)."""
@@ -221,33 +234,39 @@ def _build_snapshot(session: Session):
     total_p_nodes = 0
     for n in nodes:
         last_n = session.exec(select(Telemetry).where(Telemetry.device_id == n.id).order_by(desc(Telemetry.timestamp))).first()
-        p = last_n.power_w if last_n else 0
+        # Mesures LIVE uniquement si la dernière trame est récente (< 3 min).
+        # Sinon (node hors ligne / vieille ligne seedée), on affiche 0.
+        fresh = _is_fresh(last_n.timestamp) if last_n else False
+        p = last_n.power_w if fresh else 0
         nodes_data.append({
-            "name": n.name, 
-            "mac": n.mac_address, 
+            "name": n.name,
+            "mac": n.mac_address,
             "role": n.role,
             "power": p,
-            "voltage": last_n.voltage_v if last_n else 0,
-            "current": last_n.current_a if last_n else 0,
-            "kwh_total": last_n.energy_kwh if last_n else 0,
-            "power_factor": last_n.power_factor if last_n else 0,
-            "frequency_hz": last_n.frequency_hz if last_n else 0,
-            "energy_delta_wh": last_n.energy_delta_wh if last_n else 0,
-            "is_active": n.is_active, 
+            "voltage": last_n.voltage_v if fresh else 0,
+            "current": last_n.current_a if fresh else 0,
+            "kwh_total": last_n.energy_kwh if fresh else 0,
+            "power_factor": last_n.power_factor if fresh else 0,
+            "frequency_hz": last_n.frequency_hz if fresh else 0,
+            "energy_delta_wh": last_n.energy_delta_wh if fresh else 0,
+            "is_active": n.is_active,
             "status": n.status
         })
         total_p_nodes += p
 
-    master_voltage = last_m.voltage_v if last_m else 0.0
-    master_current = last_m.current_a if last_m else 0.0
+    # Mesures LIVE du Master uniquement si la dernière trame est récente.
+    fresh_m = _is_fresh(last_m.timestamp) if last_m else False
+    master_power   = last_m.power_w if fresh_m else 0.0
+    master_voltage = last_m.voltage_v if fresh_m else 0.0
+    master_current = last_m.current_a if fresh_m else 0.0
 
-    # Surcharge si simulation active
+    # Surcharge si simulation active (la tension simulée fait autorité même si le
+    # Master réel est momentanément muet : c'est une entrée « live » volontaire).
     if sim_active and _simulated_voltage is not None:
         master_voltage = _simulated_voltage
         # Calcul du courant cohérent si P > 0
         pf = last_m.power_factor if (last_m and last_m.power_factor > 0) else 0.95
-        power = last_m.power_w if last_m else 0.0
-        master_current = power / (master_voltage * pf) if (master_voltage > 0 and pf > 0) else 0.0
+        master_current = master_power / (master_voltage * pf) if (master_voltage > 0 and pf > 0) else 0.0
 
     snapshot = {
         "type": "TELEMETRY_UPDATE",
@@ -262,16 +281,16 @@ def _build_snapshot(session: Session):
             "mac": master.mac_address if master else "MAC_MASTER",
             "role": RoleEnum.MASTER,
             "status": master.status if master else StatusEnum.OFFLINE,
-            "power": last_m.power_w if last_m else 0.0,
+            "power": master_power,
             "voltage": master_voltage,
             "current": master_current,
-            "kwh_total": last_m.energy_kwh if last_m else 0.0,
-            "energy_delta_wh": last_m.energy_delta_wh if last_m else 0.0,
-            "power_factor": last_m.power_factor if last_m else 0.0,
-            "frequency_hz": last_m.frequency_hz if last_m else 50.0
+            "kwh_total": last_m.energy_kwh if fresh_m else 0.0,
+            "energy_delta_wh": last_m.energy_delta_wh if fresh_m else 0.0,
+            "power_factor": last_m.power_factor if fresh_m else 0.0,
+            "frequency_hz": last_m.frequency_hz if fresh_m else 50.0
         },
         "nodes": nodes_data,
-        "audit": {"unknown_w": max(0, (last_m.power_w if last_m else 0.0) - total_p_nodes)},
+        "audit": {"unknown_w": max(0, master_power - total_p_nodes)},
         "billing": {
             "total_fcfa": int(billing_data["total_fcfa"]), 
             "energy_cost": int(billing_data["energy_cost"]),

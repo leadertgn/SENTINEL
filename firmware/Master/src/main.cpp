@@ -123,7 +123,7 @@ void setup() {
 // Affiché sur le LCD quand le portail de configuration WiFi s'ouvre (mode AP) :
 // l'opérateur voit le nom du réseau auquel se connecter avec son téléphone.
 void net_on_portal_open(const char* apName) {
-    Serial.printf("🛜 Portail WiFi ouvert — réseau : %s (mdp: %s)\n", apName, WIFI_AP_PASSWORD);
+    Serial.printf("🛜 Portail WiFi ouvert — réseau (sans mot de passe) : %s\n", apName);
     if (lcdAvailable && lcd) {
         lcd->clear();
         lcd->setCursor(0, 0);

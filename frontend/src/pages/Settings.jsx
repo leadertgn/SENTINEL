@@ -29,6 +29,10 @@ export default function Settings() {
         res = await fetch(`${API_URL}/api/sim/seed-history`, {
           method: "POST",
         });
+      } else if (type === "clear") {
+        res = await fetch(`${API_URL}/api/sim/clear-history`, {
+          method: "POST",
+        });
       }
 
       if (!res.ok) throw new Error("Erreur lors de la requête");
@@ -48,6 +52,11 @@ export default function Settings() {
         setMessage({
           type: "success",
           text: "Historique de démo (avril, mai, juin 2026) injecté en base.",
+        });
+      } else if (type === "clear") {
+        setMessage({
+          type: "success",
+          text: "Historique de démo supprimé. Les mesures réelles du mois courant sont intactes.",
         });
       }
     } catch (e) {
@@ -156,7 +165,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="pt-2 flex justify-start">
+          <div className="pt-2 flex flex-wrap gap-3 justify-start">
             <button
               onClick={() => triggerSim("seed")}
               disabled={loading}
@@ -164,6 +173,14 @@ export default function Settings() {
             >
               <Database className="w-5 h-5" />
               Charger l'historique de démonstration (3 mois)
+            </button>
+            <button
+              onClick={() => triggerSim("clear")}
+              disabled={loading}
+              className="flex items-center gap-2 px-5 py-3 border-2 border-[#1a2e4a] text-[#1a2e4a] hover:bg-slate-100 rounded font-sans font-bold transition-all"
+            >
+              <Database className="w-5 h-5" />
+              Supprimer l'historique de démonstration
             </button>
           </div>
         </div>

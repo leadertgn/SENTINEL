@@ -1,13 +1,21 @@
-# Temporary AI Framing Files
-README_PROJET.md
-README_BACKEND.md
-README_FRONTEND.md
-README_MASTER.md
-README_NODE.md
+# ================================================================
+#  SENTINEL — .gitignore racine
+#  (chaque sous-dossier backend/ frontend/ firmware/ a aussi le sien)
+# ================================================================
 
-# System files
+# Base de données SQLite (artefact d'exécution, régénéré au démarrage)
+database.db
+*.db-journal
+*.sqlite3
+
+# Fichiers système
 .DS_Store
 Thumbs.db
 
-# Project folders (each folder has its own .gitignore)
-# but we keep them visible here to allow git to see the subfolders
+# IDE / outils
+.vscode/
+.idea/
+.qodo/
+.dist/
+*.swp
+*.bak

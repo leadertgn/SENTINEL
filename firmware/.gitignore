@@ -4,8 +4,13 @@
 .piolibdeps/
 .clang-format
 
-# Secrets - CRITIQUE
-**/secrets.h**
+# Secrets - CRITIQUE (le vrai secrets.h uniquement ; les .example sont versionnés)
+**/secrets.h
+!**/secrets.h.example
+
+# Python (NodeSimulator)
+__pycache__/
+*.py[cod]
 
 # IDE
 .vscode/

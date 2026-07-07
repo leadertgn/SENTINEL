@@ -1,96 +1,164 @@
-# 🛡️ Sentinel — Smart Energy Home Infrastructure
+# 🛡️ SENTINEL — Supervision Énergétique Résidentielle Intelligente
 
-**Sentinel** est une solution IoT de pointe dédiée à la télégestion et à l'audit énergétique résidentiel. Conçu pour répondre aux défis du secteur électrique béninois, le système offre un suivi métrologique haute précision, une facturation progressive en temps réel (SBEE) et une protection intelligente des équipements.
+**SENTINEL** est une solution IoT distribuée de télégestion et d'audit énergétique résidentiel, conçue pour le contexte du réseau **SBEE (Bénin)**. Le système mesure la consommation en temps réel, calcule la facturation progressive par tranches, protège les équipements contre les instabilités de tension et permet le pilotage à distance des charges.
 
-## 🏗️ Architecture du Système
-
-Le projet repose sur une topologie **Master/Node** distribuée :
-- **Master (ESP32)** : Installé au point d'entrée (compteur général), il assure la mesure globale de la maison et sert de barrière de sécurité (tension).
-- **Nodes (ESP8266)** : Déployés sur les prises des gros consommateurs (Climatisation, Chauffe-eau), ils permettent le monitoring individuel et le pilotage ON/OFF.
-- **Backend (FastAPI)** : Le moteur de traitement qui agrège les données, calcule les deltas de consommation et gère l'audit différentiel.
-- **Frontend (React)** : Un dashboard premium en temps réel offrant une visibilité totale sur le flux énergétique et les coûts.
+> Projet de Fin d'Études (PFE) — soutenance **8 juillet 2026**.
 
 ---
 
-## ✨ Fonctionnalités Clés
+## 🏗️ Architecture du système
 
-- **Audit Différentiel Temps Réel** : Identification automatique de la "Charge Inconnue" (P_inconnue = P_Master - Σ P_Nodes).
-- **Facturation Progressive (SBEE)** : Calcul automatique du coût en FCFA basé sur les tranches tarifaires sociales et normales du Bénin.
-- **Barrière de Sécurité Électrique** : Protection des compresseurs et moteurs par blocage automatique des charges en cas de tension instable (Haut/Bas).
-- **Auto-Découverte IoT** : Ajout transparent de nouveaux équipements sur le réseau via authentification par clé secrète.
-- **Monitoring Local** : Affichage des métriques critiques sur écran LCD 16x2 directement au compteur.
+```
+     ┌──────────────┐        ┌──────────────┐
+     │  MASTER ESP32│        │  NODE ESP8266│
+     │  PZEM + LCD  │        │  PZEM + Relais│
+     └──────┬───────┘        └──────┬───────┘
+            │  MQTT (JSON)          │
+            └───────────┬───────────┘
+                        ▼
+                 ┌─────────────┐   Mosquitto
+                 │   BROKER     │   (127.0.0.1:1883)
+                 │  MQTT        │
+                 └──────┬───────┘
+                        ▼
+                 ┌─────────────┐   FastAPI + SQLModel (SQLite)
+                 │   BACKEND    │   REST + WebSocket
+                 └──────┬───────┘
+                        ▼ WebSocket temps réel
+                 ┌─────────────┐   React 19 + Vite + Tailwind 4
+                 │   FRONTEND   │   Dashboard, Facturation, Équipements
+                 └─────────────┘
+```
+
+Topologie **Master / Node** :
+
+| Élément | Matériel | Rôle |
+|---|---|---|
+| **Master** | ESP32 + PZEM-004T + LCD 16x2 I2C | Mesure générale au compteur, barrière de sécurité tension, affichage local |
+| **Node** | ESP8266 (NodeMCU) + PZEM-004T + relais | Mesure d'une charge individuelle + coupure/réarmement ON-OFF |
+| **Broker** | Mosquitto | Bus MQTT entre firmwares et backend |
+| **Backend** | FastAPI, SQLModel, SQLite, paho-mqtt | Agrégation, calcul des deltas, audit différentiel, facturation, WebSocket |
+| **Frontend** | React 19, Vite, Tailwind 4, Zustand, Recharts | Dashboard temps réel |
 
 ---
 
-## 📂 Structure du Projet
+## ✨ Fonctionnalités clés
+
+- **Audit différentiel temps réel** — Charge inconnue : `P_inconnue = P_Master − Σ P_Nodes`.
+- **Facturation progressive SBEE** — Coût en FCFA par tranches tarifaires (référence mémoire : **280 kWh → 34 950 FCFA**, sans TVA sur le réseau SBEE).
+- **Barrière de sécurité électrique** — Coupure automatique des charges en cas de tension haute/basse (protection compresseurs/moteurs).
+- **Portail WiFi de secours (AP ouvert)** — Si le WiFi domicile est indisponible, l'ESP ouvre un point d'accès *sans mot de passe* pour reconfigurer le réseau.
+- **Résilience hors-ligne** — Les mesures sont mises en file d'attente en Flash (LittleFS) et rejouées à la reconnexion.
+- **Watchdog appareils** — Un appareil sans télémétrie depuis 3 min est marqué HORS-LIGNE côté backend.
+
+---
+
+## 📂 Structure du projet
 
 ```text
 SENTINEL/
+├── start-sentinel.ps1      # Démarre broker + backend + frontend (Windows, sans Docker)
 ├── firmware/
-│   ├── Master/             # Code ESP32 (Mesure générale + LCD)
-│   └── node-esp8266/       # Code ESP8266 (Pilotage relais + Mesure locale)
-├── backend/                # API FastAPI, MQTT Client & SQLModel
-└── frontend/               # Dashboard React (Tailwind 4, Zustand, Recharts)
+│   ├── Master/             # ESP32 — mesure générale + LCD          → firmware/Master/README.md
+│   ├── node-esp8266/       # ESP8266 — relais + mesure locale
+│   └── NodeSimulator/      # Simulateurs Python (tests sans matériel)
+├── backend/                # API FastAPI + client MQTT + SQLModel    → backend/README.md
+└── frontend/               # Dashboard React / Vite                  → frontend/README.md
 ```
+
+Chaque sous-système a son propre README détaillé.
 
 ---
 
-## 📡 Contrat de Données (IoT)
+## 📡 Contrat de données MQTT
 
-Les appareils communiquent via MQTT avec le payload JSON suivant :
+**Topics** (`{mac}` = adresse MAC sans `:`) :
+
+| Topic | Sens | Contenu |
+|---|---|---|
+| `sbee/devices/{mac}/data` | ESP → Backend | Télémétrie (mesures) |
+| `sbee/devices/{mac}/status` | ESP → Backend | ONLINE / OFFLINE (retenu, + LWT) |
+| `sbee/devices/{mac}/cmd` | Backend → ESP | Commande relais `{"action":"ON\|OFF"}` |
+
+**Payload de télémétrie** (`/data`) :
 ```json
 {
-  "mac_address": "...",
-  "secret_key": "...",
-  "role": "MASTER|NODE",
+  "mac_address": "A1B2C3D4E5F6",
+  "secret_key": "…",
+  "role": "MASTER",
+  "timestamp": 1720000000,
   "voltage_v": 220.5,
   "current_a": 1.2,
   "power_w": 260.0,
   "energy_kwh": 45.12,
-  "is_active": true,
-  "pf": 0.98
+  "frequency_hz": 50.0,
+  "pf": 0.98,
+  "is_active": true
 }
 ```
 
 ---
 
-## 🚀 Installation & Lancement
+## 🚀 Démarrage rapide
 
-### 1. Prérequis
-- Broker MQTT (Mosquitto)
-- Python 3.10+
-- Node.js 18+
-- PlatformIO (VS Code Extension)
+### Prérequis
+- **Mosquitto** (broker MQTT) — https://mosquitto.org/download/
+- **Python 3.10+**
+- **Node.js 18+**
+- **PlatformIO** (extension VS Code) pour flasher les firmwares
 
-### 2. Backend
-```bash
-cd backend
-pip install -r requirements.txt
-# Modifier .env avec vos accès MQTT/DB
-uvicorn main:app --reload
+### Option A — Script tout-en-un (recommandé, jour J)
+```powershell
+.\start-sentinel.ps1
 ```
+Le script lance Mosquitto + backend + frontend dans des fenêtres séparées, affiche l'IP du PC (à reporter dans les `secrets.h` des firmwares) et ouvre l'interface web.
 
-### 3. Frontend
+> Si l'exécution est bloquée : `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` (une seule fois).
+
+### Option B — Manuel
 ```bash
+# 1. Broker (si non installé en service)
+mosquitto -v
+
+# 2. Backend
+cd backend
+python -m venv .venv && .venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+copy .env.example .env                            # puis ajuster
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# 3. Frontend
 cd frontend
 npm install
+copy .env.example .env
 npm run dev
 ```
 
-### 4. Firmwares
-- Ouvrir `firmware/Master` ou `firmware/node-esp8266` dans PlatformIO.
-- Configurer les identifiants WiFi dans `include/secrets.h`.
-- Flasher les microcontrôleurs.
+Interfaces :
+- **API** : http://localhost:8000 (docs interactives : `/docs`)
+- **Web** : http://localhost:5173
 
 ---
 
-## 🛠️ Modes de Développement
-- **SIMULATION_MODE** : Activé par défaut dans les firmwares pour tester sans source 220V. Les ESP génèrent des données aléatoires cohérentes pour valider la communication MQTT et l'interface Web.
+## 🧪 Modes de fonctionnement
+
+| Mode | Où | Effet |
+|---|---|---|
+| **Simulation firmware** | `SIMULATION_MODE=true` dans `platformio.ini` | L'ESP génère des mesures réalistes sans PZEM (test complet de la chaîne MQTT → web) |
+| **Simulation backend** | `SIMULATION_MODE=true` dans `backend/.env` | Bascule d'affichage ; le simulateur de tension/seed reste disponible via `/api/sim/*` |
+| **Production** | `SIMULATION_MODE=false` partout | Mesures réelles PZEM sur secteur 220 V |
+
+---
+
+## 🔐 Sécurité & secrets
+
+- Les `secrets.h` (WiFi, IP broker, clé IoT) et le `.env` backend contiennent des **valeurs réelles** et sont **gitignorés**. Seuls les `*.example` sont versionnés.
+- La clé `DEVICE_SECRET` (firmware) doit correspondre à `DEVICE_SHARED_SECRET` (backend).
+- Ne jamais committer un `secrets.h` ou un `.env` réel.
 
 ---
 
 ## 👨‍💻 Auteur
-Projet de Fin d'Études (PFE) — Encadré par le Dr. Sanya.
+Projet de Fin d'Études — Emeric. Encadrement : Dr. Sanya.
 
----
-*Propriété de Sentinel IoT Infrastructure — 2026*
+*SENTINEL IoT Infrastructure — 2026*

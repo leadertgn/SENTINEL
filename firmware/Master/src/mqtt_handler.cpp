@@ -10,38 +10,11 @@
 static WiFiClient   wifiClient;
 static PubSubClient mqttClient(wifiClient);
 
-// ── Adresse du broker MQTT en RUNTIME ─────────────────────────────
-// Valeur par défaut = celle de secrets.h, mais écrasable depuis le
-// portail de configuration (champ dédié) et persistée dans LittleFS.
-// Fini le reflash quand l'IP du PC change (ex: 192.168.100.12 → .58).
-static char mqttBroker[40] = MQTT_BROKER;
-
-static void load_net_config() {
-    if (!LittleFS.exists("/netcfg.json")) return;
-    File f = LittleFS.open("/netcfg.json", "r");
-    if (!f) return;
-    JsonDocument doc;
-    if (deserializeJson(doc, f) == DeserializationError::Ok) {
-        const char* b = doc["broker"] | "";
-        if (strlen(b) > 6) {
-            strncpy(mqttBroker, b, sizeof(mqttBroker) - 1);
-            mqttBroker[sizeof(mqttBroker) - 1] = '\0';
-            Serial.printf("🗄️ Broker chargé depuis la Flash : %s\n", mqttBroker);
-        }
-    }
-    f.close();
-}
-
-static void save_net_config() {
-    File f = LittleFS.open("/netcfg.json", "w");
-    if (!f) return;
-    JsonDocument doc;
-    doc["broker"] = mqttBroker;
-    serializeJson(doc, f);
-    f.close();
-}
-
-static bool s_shouldSave = false;
+// ── Adresse du broker MQTT ────────────────────────────────────────
+// Source UNIQUE = secrets.h (MQTT_BROKER). Persistance Flash retirée : après
+// un changement de réseau, elle rechargeait une ANCIENNE IP injoignable.
+// Pour changer de broker : éditer secrets.h + reflasher.
+static const char* mqttBroker = MQTT_BROKER;
 
 // ── Identifiants dynamiques (générés depuis le MAC WiFi) ──────────
 static String s_deviceMac;
@@ -95,14 +68,15 @@ static void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 // ─────────────────────────────────────────────────────────────────
 //  Réseau — identifiants "domicile" d'abord, sinon portail captif AP
 // ─────────────────────────────────────────────────────────────────
-// 1) Essai rapide (8s) des identifiants connus de secrets.h (NON persistés,
-//    pour ne pas écraser un réseau configuré sur place lors d'une démo).
-// 2) Échec → WiFiManager : identifiants déjà sauvegardés puis, à défaut,
-//    ouverture d'un point d'accès listant les réseaux + un champ « IP broker ».
-// 3) Le choix (réseau + broker) est mémorisé en Flash pour les prochains boots.
+// 1) Essai rapide (8s) des identifiants de secrets.h.
+// 2) Échec → WiFiManager : identifiants sauvegardés puis portail AP ouvert
+//    listant les réseaux (le broker, lui, vient toujours de secrets.h).
 // Ne redémarre jamais l'ESP : au pire, mode hors-ligne (file d'attente Flash).
 void net_begin() {
-    load_net_config();
+    // Purge d'une éventuelle ancienne config broker en Flash (sinon elle
+    // écraserait l'IP de secrets.h et resterait injoignable après un
+    // changement de réseau).
+    if (LittleFS.exists("/netcfg.json")) LittleFS.remove("/netcfg.json");
 
     // 1) Tentative rapide avec le réseau "domicile" (identifiants de secrets.h)
     WiFi.persistent(false); // ne pas écraser un réseau mémorisé par le portail
@@ -115,7 +89,7 @@ void net_begin() {
     Serial.println();
 
     if (WiFi.status() != WL_CONNECTED) {
-        // 2) Portail captif : réseaux à proximité + champ IP du broker
+        // 2) Portail captif : choix du réseau WiFi (le broker reste celui de secrets.h)
         Serial.println("🛜 WiFi domicile indisponible — ouverture du portail de configuration.");
         WiFi.persistent(true); // le réseau choisi ici doit survivre au redémarrage
 
@@ -124,19 +98,7 @@ void net_begin() {
         wm.setAPCallback([](WiFiManager* mgr) {
             net_on_portal_open(mgr->getConfigPortalSSID().c_str());
         });
-        wm.setSaveConfigCallback([]() { s_shouldSave = true; });
-
-        WiFiManagerParameter p_broker("broker", "IP du broker MQTT (PC hote)", mqttBroker, sizeof(mqttBroker) - 1);
-        wm.addParameter(&p_broker);
-
-        wm.autoConnect(WIFI_AP_SSID, WIFI_AP_PASSWORD);
-
-        if (s_shouldSave) {
-            strncpy(mqttBroker, p_broker.getValue(), sizeof(mqttBroker) - 1);
-            mqttBroker[sizeof(mqttBroker) - 1] = '\0';
-            save_net_config();
-            Serial.printf("💾 Broker MQTT enregistré : %s\n", mqttBroker);
-        }
+        wm.autoConnect(WIFI_AP_SSID); // point d'accès OUVERT (sans mot de passe)
         WiFi.mode(WIFI_STA); // sortie propre du mode AP
     }
 

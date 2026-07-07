@@ -30,7 +30,10 @@
 #define I2C_SCL_PIN    22
 
 // ─── LEDs de Diagnostic ──────────────────────────────────────────
-#define LED_NETWORK_PIN 2
+// GPIO2 est un pin de strapping (sensible au boot) → LED réseau déplacée
+// sur GPIO25 (broche libre, sortie propre, sans rôle de démarrage).
+// GPIO4 n'est PAS un pin de strapping : la LED d'activité peut y rester.
+#define LED_NETWORK_PIN 25
 #define LED_ACTIVITY_PIN 4
 
 // ─── Intervalles de temps ────────────────────────────────────────
@@ -41,10 +44,10 @@
 
 // ─── Portail de configuration WiFi (mode AP de secours) ──────────
 // Si le WiFi "domicile" est indisponible, l'ESP ouvre un point d'accès
-// portant ce nom : on s'y connecte au téléphone pour choisir le réseau
-// et saisir l'IP du broker. Le choix est sauvegardé en Flash (LittleFS).
+// OUVERT (sans mot de passe) portant ce nom : on s'y connecte au téléphone
+// pour choisir le réseau et saisir l'IP du broker. Choix sauvegardé en Flash.
 #define WIFI_AP_SSID      "SENTINEL-Master-Setup"
-#define WIFI_AP_PASSWORD  "sentinel2026"
+#define WIFI_AP_PASSWORD  "sentinel2026"  // (non utilisé : le point d'accès est ouvert)
 
 // ─── Secrets (WiFi, MQTT, clé IoT) ───────────────────────────────
 #include "secrets.h"

@@ -12,84 +12,49 @@ static String s_mac;
 static bool s_relayState = false;
 extern unsigned long lastPublishMs; // Expose la variable de main.cpp
 
-// ── Adresse du broker MQTT en RUNTIME ─────────────────────────────
-// Défaut = secrets.h, écrasable via le portail de configuration (champ
-// dédié) et persistée dans LittleFS. Plus besoin de reflasher si l'IP
-// du PC hôte change entre le domicile et la salle de soutenance.
-static char mqttBroker[40] = MQTT_BROKER;
-static bool s_shouldSave = false;
-
-static void load_net_config() {
-    if (!LittleFS.exists("/netcfg.json")) return;
-    File f = LittleFS.open("/netcfg.json", "r");
-    if (!f) return;
-    JsonDocument doc;
-    if (deserializeJson(doc, f) == DeserializationError::Ok) {
-        const char* b = doc["broker"] | "";
-        if (strlen(b) > 6) {
-            strncpy(mqttBroker, b, sizeof(mqttBroker) - 1);
-            mqttBroker[sizeof(mqttBroker) - 1] = '\0';
-            Serial.printf("🗄️ Broker chargé depuis la Flash : %s\n", mqttBroker);
-        }
-    }
-    f.close();
-}
-
-static void save_net_config() {
-    File f = LittleFS.open("/netcfg.json", "w");
-    if (!f) return;
-    JsonDocument doc;
-    doc["broker"] = mqttBroker;
-    serializeJson(doc, f);
-    f.close();
-}
+// ── Adresse du broker MQTT ────────────────────────────────────────
+// Source UNIQUE = secrets.h (MQTT_BROKER). On a retiré la persistance en
+// Flash : après un changement de réseau, elle rechargeait une ANCIENNE IP
+// injoignable. Pour changer de broker : éditer secrets.h + reflasher.
+static const char* mqttBroker = MQTT_BROKER;
 
 // ─────────────────────────────────────────────────────────────────
 //  Réseau — identifiants "domicile" d'abord, sinon portail captif AP
 // ─────────────────────────────────────────────────────────────────
 void net_begin() {
-    load_net_config();
+    // Purge d'une éventuelle ancienne config broker sauvegardée en Flash
+    // (sinon elle écraserait l'IP de secrets.h et resterait injoignable).
+    if (LittleFS.exists("/netcfg.json")) LittleFS.remove("/netcfg.json");
 
     // 1) Tentative rapide (8s) avec le réseau "domicile" de secrets.h
     WiFi.persistent(false); // ne pas écraser un réseau mémorisé par le portail
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.printf("📶 Essai WiFi domicile → %s ", WIFI_SSID);
+    DBG.printf("📶 Essai WiFi domicile → %s ", WIFI_SSID);
     unsigned long t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) { delay(250); Serial.print("."); }
-    Serial.println();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) { delay(250); DBG.print("."); }
+    DBG.println();
 
     if (WiFi.status() != WL_CONNECTED) {
-        // 2) Portail captif : réseaux à proximité + champ IP du broker
-        Serial.println("🛜 WiFi domicile indisponible — ouverture du portail de configuration.");
+        // 2) Portail captif : choix du réseau WiFi (le broker reste celui de secrets.h)
+        DBG.println("🛜 WiFi domicile indisponible — ouverture du portail de configuration.");
         WiFi.persistent(true);
 
         WiFiManager wm;
+        wm.setDebugOutput(false);
         wm.setConfigPortalTimeout(180); // 3 min max, puis mode hors-ligne
         wm.setAPCallback([](WiFiManager* mgr) {
             net_on_portal_open(mgr->getConfigPortalSSID().c_str());
         });
-        wm.setSaveConfigCallback([]() { s_shouldSave = true; });
-
-        WiFiManagerParameter p_broker("broker", "IP du broker MQTT (PC hote)", mqttBroker, sizeof(mqttBroker) - 1);
-        wm.addParameter(&p_broker);
-
-        wm.autoConnect(WIFI_AP_SSID, WIFI_AP_PASSWORD);
-
-        if (s_shouldSave) {
-            strncpy(mqttBroker, p_broker.getValue(), sizeof(mqttBroker) - 1);
-            mqttBroker[sizeof(mqttBroker) - 1] = '\0';
-            save_net_config();
-            Serial.printf("💾 Broker MQTT enregistré : %s\n", mqttBroker);
-        }
+        wm.autoConnect(WIFI_AP_SSID); // point d'accès OUVERT (sans mot de passe)
         WiFi.mode(WIFI_STA);
     }
 
     if (WiFi.status() == WL_CONNECTED)
-        Serial.printf("✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
+        DBG.printf("✅ WiFi connecté — IP : %s\n", WiFi.localIP().toString().c_str());
     else
-        Serial.println("⚠️ Pas de WiFi — mode hors-ligne (les mesures sont mises en file).");
+        DBG.println("⚠️ Pas de WiFi — mode hors-ligne (les mesures sont mises en file).");
 }
 
 bool mqtt_connected() {
@@ -109,7 +74,7 @@ void flush_queue() {
     File file = LittleFS.open("/queue.jsonl", "r");
     if (!file) return;
 
-    Serial.println("📤 Vidage de la file d'attente hors-ligne...");
+    DBG.println("📤 Vidage de la file d'attente hors-ligne...");
     int count = 0;
     
     // On bloque le flux normal pour vider la mémoire
@@ -126,7 +91,7 @@ void flush_queue() {
     }
     file.close();
     LittleFS.remove("/queue.jsonl");
-    Serial.printf("✅ File d'attente vidée (%d messages envoyés).\n", count);
+    DBG.printf("✅ File d'attente vidée (%d messages envoyés).\n", count);
 }
 
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
@@ -181,13 +146,24 @@ void mqtt_loop() {
     if (!mqttClient.connected()) {
         if (s_lastMqttAttempt == 0 || (millis() - s_lastMqttAttempt) >= MQTT_RECONNECT_MS) {
             s_lastMqttAttempt = millis();
-            Serial.printf("🔌 Tentative connexion MQTT Node (%s)...\n", s_mac.c_str());
+            DBG.printf("🔌 Tentative connexion MQTT Node (%s)...\n", s_mac.c_str());
 
             String willTopic = "sbee/devices/" + s_mac + "/status";
             String willPayload = "{\"state\":\"OFFLINE\",\"mac_address\":\"" + s_mac + "\",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
 
             if (mqttClient.connect(s_mac.c_str(), "", "", willTopic.c_str(), 0, true, willPayload.c_str())) {
-                Serial.println("✅ MQTT Connecté");
+                DBG.println("✅ MQTT Connecté");
+
+                // Annonce ONLINE (retenue) : SANS ce message, le backend ne voit
+                // le Node « En ligne » qu'à la 1re trame /data. Or sur secteur, tant
+                // qu'aucune charge/mesure valide n'est lue, aucune trame n'est
+                // publiée → le Node resterait « Hors ligne » indéfiniment. On
+                // s'annonce donc dès la connexion, comme le Master.
+                String onlinePayload = "{\"state\":\"ONLINE\",\"role\":\"NODE\",\"mac_address\":\"" + s_mac +
+                                       "\",\"is_active\":" + (s_relayState ? "true" : "false") +
+                                       ",\"secret_key\":\"" + String(DEVICE_SECRET) + "\"}";
+                mqttClient.publish(willTopic.c_str(), onlinePayload.c_str(), true);
+
                 mqttClient.subscribe(("sbee/devices/" + s_mac + "/cmd").c_str());
                 flush_queue(); // Vidage dès la connexion réussie
             }
@@ -228,9 +204,9 @@ void publish_telemetry(const SensorData& data, unsigned long timestamp) {
         if (file) {
             file.println(buffer);
             file.close();
-            Serial.println("💾 [HORS-LIGNE] Sauvegarde en Flash (Node) réussie.");
+            DBG.println("💾 [HORS-LIGNE] Sauvegarde en Flash (Node) réussie.");
         } else {
-            Serial.println("❌ [ERREUR] Impossible d'écrire dans LittleFS.");
+            DBG.println("❌ [ERREUR] Impossible d'écrire dans LittleFS.");
         }
         return;
     }
@@ -238,8 +214,8 @@ void publish_telemetry(const SensorData& data, unsigned long timestamp) {
     // EN LIGNE : Envoi normal
     bool ok = mqttClient.publish(topic.c_str(), buffer);
     if (ok) {
-        Serial.printf("📤 [MQTT] %s | P: %.1fW\n", topic.c_str(), data.power_w);
+        DBG.printf("📤 [MQTT] %s | P: %.1fW\n", topic.c_str(), data.power_w);
     } else {
-        Serial.println("❌ Échec envoi MQTT");
+        DBG.println("❌ Échec envoi MQTT");
     }
 }

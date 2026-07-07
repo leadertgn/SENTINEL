@@ -54,6 +54,28 @@ def reset_simulation(session: Session = Depends(get_session)):
 
     return {"status": "success", "message": "Simulation réinitialisée."}
 
+@router.post("/clear-history")
+def clear_history(session: Session = Depends(get_session)):
+    """
+    Supprime l'historique de démonstration injecté par /seed-history
+    (télémétries datées d'avril à juin 2026). Permet de « défaire » le seed.
+    N'affecte pas les mesures réelles du mois courant.
+    """
+    start_date = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    end_date = datetime(2026, 6, 30, 23, 59, 59, tzinfo=timezone.utc)
+
+    records = session.exec(
+        select(Telemetry).where(Telemetry.timestamp >= start_date).where(Telemetry.timestamp <= end_date)
+    ).all()
+    count = len(records)
+    for record in records:
+        session.delete(record)
+    session.commit()
+
+    logger.info(f"🧹 Historique de démo supprimé ({count} relevés avril–juin 2026).")
+    _broadcast_unified_snapshot(session)
+    return {"status": "success", "deleted": count, "message": "Historique de démonstration supprimé."}
+
 @router.post("/seed-history")
 def seed_history(session: Session = Depends(get_session)):
     """

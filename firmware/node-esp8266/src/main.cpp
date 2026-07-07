@@ -35,14 +35,14 @@ static unsigned long lastGoodEpoch = 0;
 static unsigned long millisAtSync = 0;
 
 void setup() {
-    Serial.begin(115200);
+    DBG.begin(115200);
     delay(1000);
-    Serial.println("\n🛡️ SENTINEL NODE STARTING...");
+    DBG.println("\n🛡️ SENTINEL NODE STARTING...");
 
     if (!LittleFS.begin()) {
-        Serial.println("❌ Erreur de montage LittleFS");
+        DBG.println("❌ Erreur de montage LittleFS");
     } else {
-        Serial.println("📂 LittleFS initialisé");
+        DBG.println("📂 LittleFS initialisé");
     }
 
     pinMode(LED_NETWORK_PIN, OUTPUT);
@@ -64,14 +64,13 @@ void setup() {
         }
     }
 
-    Serial.println("✅ SYSTEME PRET");
+    DBG.println("✅ SYSTEME PRET");
 }
 
 // Affiché quand le portail de configuration WiFi s'ouvre (le Node n'a pas de LCD,
 // on se contente du moniteur série).
 void net_on_portal_open(const char* apName) {
-    Serial.printf("🛜 Portail WiFi ouvert — connectez-vous au réseau : %s (mdp: %s)\n",
-                  apName, WIFI_AP_PASSWORD);
+    DBG.printf("🛜 Portail WiFi ouvert (sans mot de passe) — connectez-vous au réseau : %s\n", apName);
 }
 
 // Reconnexion WiFi en arrière-plan (NON bloquante) : si la liaison tombe ou
@@ -83,7 +82,7 @@ void wifi_maintain() {
     if (WiFi.status() == WL_CONNECTED) return;
     if (lastTry != 0 && (millis() - lastTry) < 15000) return;
     lastTry = millis();
-    Serial.println("📶 WiFi absent — nouvelle tentative en arrière-plan...");
+    DBG.println("📶 WiFi absent — nouvelle tentative en arrière-plan...");
     WiFi.reconnect();
 }
 
