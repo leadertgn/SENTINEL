@@ -85,6 +85,9 @@ app.add_middleware(
     CORSMiddleware,
     # En développement: localhost Vite. En production: changer ALLOWED_ORIGINS dans .env
     allow_origins=settings.ALLOWED_ORIGINS.split(","),
+    # Autorise en plus tout le réseau local privé (démo multi-appareils : les
+    # téléphones du jury accèdent au dashboard via l'IP du PC).
+    allow_origin_regex=settings.ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

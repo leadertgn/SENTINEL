@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Fiche de présentation — SENTINEL</title>
+<style>
+  @page { size: A4; margin: 13mm 15mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root{
+    --bleu:#0b3d66; --bleu2:#1264a3; --vert:#12995b; --or:#d99400;
+    --gris:#3d4a5a; --grisclair:#eef3f8; --bord:#cdd8e3;
+  }
+  html,body{ font-family:"Segoe UI",Arial,sans-serif; color:#12202f; font-size:13.5px; line-height:1.5; }
+
+  /* Bandeau */
+  .top{ display:flex; justify-content:space-between; align-items:center;
+        border-bottom:4px solid var(--bleu); padding-bottom:9px; margin-bottom:14px; }
+  .brand{ display:flex; align-items:center; gap:13px; }
+  .shield{ font-size:44px; line-height:1; }
+  .brand h1{ font-size:34px; color:var(--bleu); letter-spacing:1px; }
+  .brand .sub{ font-size:13px; color:var(--gris); font-weight:600; text-transform:uppercase; letter-spacing:.6px; }
+  .insti{ text-align:right; font-size:12px; color:var(--gris); line-height:1.45; }
+  .insti b{ color:var(--vert); font-size:15px; display:block; }
+
+  h2{ font-size:14px; text-transform:uppercase; letter-spacing:.8px; color:var(--bleu2);
+      border-left:5px solid var(--vert); padding-left:9px; margin:15px 0 8px; }
+
+  /* Bloc identité */
+  .idgrid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:9px 18px;
+           background:var(--grisclair); border:1px solid var(--bord); border-radius:8px; padding:12px 16px; }
+  .idgrid .k{ font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--gris); font-weight:700; }
+  .idgrid .v{ font-size:14px; font-weight:700; color:#14324f; }
+
+  .cols{ display:grid; grid-template-columns:1.1fr 1fr; gap:22px; }
+
+  p.desc{ text-align:justify; font-size:13.5px; }
+
+  ul{ list-style:none; }
+  ul li{ position:relative; padding-left:19px; margin-bottom:7px; font-size:13.5px; }
+  ul li::before{ content:"▸"; position:absolute; left:0; color:var(--vert); font-weight:bold; font-size:15px; }
+  ul li b{ color:var(--bleu); }
+
+  /* Architecture */
+  .arch{ display:flex; flex-direction:column; gap:7px; }
+  .node{ border:1.5px solid var(--bord); border-radius:8px; padding:9px 12px; background:#fff; }
+  .node .t{ font-weight:700; color:var(--bleu); font-size:13.5px; }
+  .node .d{ font-size:12px; color:var(--gris); }
+  .flow{ text-align:center; color:var(--bleu2); font-size:15px; font-weight:700; line-height:.7; }
+
+  .impact{ background:linear-gradient(90deg,#e7f9ef,#f2faf6); border:1.5px solid #b2e2c6;
+           border-radius:8px; padding:12px 16px; font-size:13.5px; }
+
+  .stack{ display:flex; flex-wrap:wrap; gap:7px; margin-top:4px; }
+  .chip{ background:var(--bleu); color:#fff; font-size:11.5px; font-weight:600;
+         padding:4px 12px; border-radius:20px; }
+  .chip.g{ background:var(--vert); }
+  .chip.o{ background:var(--or); color:#fff; }
+
+  /* Présentateurs */
+  .pres{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:4px; }
+  .card{ border:1.5px solid var(--bord); border-radius:8px; padding:11px 14px; background:var(--grisclair); }
+  .card .n{ font-weight:700; color:#14324f; font-size:14.5px; }
+  .card .r{ font-size:12px; color:var(--gris); margin-top:2px; }
+
+  .foot{ margin-top:14px; border-top:1.5px solid var(--bord); padding-top:8px;
+         display:flex; justify-content:space-between; font-size:11px; color:var(--gris); }
+</style>
+</head>
+<body>
+
+  <div class="top">
+    <div class="brand">
+      <div class="shield">🛡️</div>
+      <div>
+        <h1>SENTINEL</h1>
+        <div class="sub">Supervision énergétique résidentielle intelligente</div>
+      </div>
+    </div>
+    <div class="insti">
+      <b>INSTI · 25 ans</b>
+      Stands de réalisations<br>06 – 13 juillet 2026
+    </div>
+  </div>
+
+  <div class="idgrid">
+    <div><div class="k">Titre</div><div class="v">SENTINEL</div></div>
+    <div><div class="k">Année</div><div class="v">2026</div></div>
+    <div><div class="k">Département</div><div class="v">Génie Élec. &amp; Info.</div></div>
+    <div><div class="k">Groupe pédagogique</div><div class="v">Électronique &amp; Électrotechnique</div></div>
+    <div style="grid-column:span 2"><div class="k">Domaine d'application</div><div class="v">IoT · Efficacité &amp; gestion de l'énergie électrique</div></div>
+  </div>
+
+  <h2>Présentation du projet</h2>
+  <p class="desc">
+    <b>SENTINEL</b> est une solution <b>IoT distribuée</b> de supervision et de gestion de l'énergie
+    électrique résidentielle, pensée pour le réseau <b>SBEE</b> au Bénin. Un module <b>Maître (ESP32)</b>
+    mesure la consommation au compteur et assure une <b>barrière de sécurité</b> (coupure sur tension
+    instable) ; des <b>Nœuds (ESP8266)</b> mesurent et pilotent à distance chaque gros consommateur.
+    Les mesures des capteurs <b>PZEM-004T</b> remontent en temps réel via <b>MQTT</b> vers un backend
+    qui calcule la <b>facturation SBEE en FCFA</b> et détecte la « charge inconnue » du logement, le tout
+    visible sur un <b>tableau de bord web</b> accessible depuis un smartphone.
+  </p>
+
+  <div class="cols">
+    <div>
+      <h2>Fonctionnalités clés</h2>
+      <ul>
+        <li><b>Mesure temps réel</b> : tension, courant, puissance, énergie</li>
+        <li><b>Audit différentiel</b> : détection de la charge inconnue</li>
+        <li><b>Facturation SBEE</b> par tranches, en direct (FCFA)</li>
+        <li><b>Protection</b> des équipements sur tension anormale</li>
+        <li><b>Pilotage à distance</b> des charges (relais ON/OFF)</li>
+        <li><b>Accès multi-appareils</b> + portail WiFi de secours</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Architecture</h2>
+      <div class="arch">
+        <div class="node"><span class="t">Maître ESP32</span><br><span class="d">Mesure générale · LCD · sécurité</span></div>
+        <div class="flow">▼ MQTT ▼</div>
+        <div class="node"><span class="t">Nœuds ESP8266</span><br><span class="d">Mesure locale · relais</span></div>
+        <div class="flow">▼</div>
+        <div class="node"><span class="t">Backend FastAPI + Dashboard React</span><br><span class="d">Audit · facturation · temps réel</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Innovation &amp; impact</h2>
+  <div class="impact">
+    SENTINEL aide les ménages béninois à <b>maîtriser leur consommation</b>, <b>anticiper leur facture</b>
+    et <b>protéger leurs appareils</b>. En alliant métrologie de précision, intelligence logicielle et
+    conformité tarifaire SBEE, il offre une réponse <b>locale, abordable et évolutive</b> aux enjeux
+    d'efficacité énergétique — une contribution concrète au développement technologique du Bénin.
+  </div>
+
+  <div class="stack">
+    <span class="chip">ESP32</span><span class="chip">ESP8266</span><span class="chip">PZEM-004T</span>
+    <span class="chip o">MQTT</span><span class="chip g">FastAPI</span><span class="chip g">React</span>
+    <span class="chip">WebSocket</span><span class="chip o">PlatformIO</span>
+  </div>
+
+  <h2>Présentateurs</h2>
+  <div class="pres">
+    <div class="card">
+      <div class="n">TOGNON Eméric R. S.</div>
+      <div class="r">Électronique &amp; Électrotechnique · Tél. 01 90 74 41 16</div>
+    </div>
+    <div class="card">
+      <div class="n">QUENUM Aurel E.</div>
+      <div class="r">Électronique &amp; Électrotechnique · Tél. +229 01 51 99 99 71</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>Projet de Fin d'Études — INSTI · Génie Électrique &amp; Informatique</span>
+    <span>SENTINEL © 2026</span>
+  </div>
+
+</body>
+</html>

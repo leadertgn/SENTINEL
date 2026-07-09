@@ -140,6 +140,23 @@ Interfaces :
 
 ---
 
+## 📱 Accès multi-appareils (démo jury)
+
+Les membres du jury peuvent ouvrir le dashboard **depuis leur téléphone**, pendant que tout tourne sur le PC — à condition d'être sur le **même réseau WiFi**.
+
+1. Lancer `start-sentinel.ps1` : il affiche l'**IP du PC** et l'URL à partager.
+2. Le jury ouvre **`http://<IP-du-PC>:5173`** dans le navigateur du téléphone.
+3. Aucune config côté téléphone : le frontend détecte l'hôte automatiquement (`window.location.hostname`) et parle au backend du PC.
+
+Ce qui rend cela possible (déjà en place) :
+- **Vite** écoute sur `0.0.0.0` (`vite.config.js` → `server.host: true`).
+- **Backend** autorise les origines du réseau local privé (CORS `allow_origin_regex`).
+- **Pare-feu** : le script ouvre les ports `5173`, `8000`, `1883` s'il est lancé **en administrateur** (sinon, le faire une fois manuellement).
+
+> 💡 Pas de WiFi dans la salle ? Activer le **point d'accès mobile** du téléphone (ou du PC) et connecter tout le monde dessus — l'adresse `http://<IP-du-PC>:5173` fonctionne de la même façon.
+
+---
+
 ## 🧪 Modes de fonctionnement
 
 | Mode | Où | Effet |

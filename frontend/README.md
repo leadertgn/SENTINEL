@@ -53,10 +53,23 @@ Scripts disponibles :
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `VITE_API_URL` | `http://127.0.0.1:8000` | Base de l'API REST |
-| `VITE_WS_URL` | `ws://127.0.0.1:8000` | Base du WebSocket |
+| `VITE_API_URL` | *auto* | Base de l'API REST (forçage optionnel) |
+| `VITE_WS_URL` | *auto* | Base du WebSocket (forçage optionnel) |
 
-Le store se connecte à `${VITE_WS_URL}/api/telemetry/ws/telemetry` et reçoit un **snapshot unifié** à chaque mise à jour côté backend.
+Par défaut, `src/config.js` **détecte automatiquement l'hôte** via `window.location.hostname` : le navigateur utilise la même adresse que celle par laquelle il a chargé la page. Les variables `.env` ne servent qu'à forcer une adresse précise.
+
+Le store se connecte à `${WS_URL}/api/telemetry/ws/telemetry` et reçoit un **snapshot unifié** à chaque mise à jour côté backend.
+
+## 📱 Accès multi-appareils (démo jury)
+
+Le dashboard est accessible depuis les téléphones du jury, **sur le même WiFi que le PC**, sans configuration :
+
+1. Le PC lance backend + frontend (via `start-sentinel.ps1` à la racine).
+2. Vite écoute sur `0.0.0.0` (`vite.config.js` → `server.host: true`).
+3. Le jury ouvre **`http://<IP-du-PC>:5173`** (l'IP est affichée par le script).
+4. Grâce à la détection d'hôte, le téléphone parle automatiquement au backend du PC.
+
+> Le pare-feu Windows doit autoriser les ports **5173** et **8000** (le script s'en charge s'il est lancé en administrateur). Le backend autorise déjà les origines du réseau local (CORS regex).
 
 ## 🗺️ Pages
 

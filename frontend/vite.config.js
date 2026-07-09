@@ -8,4 +8,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    // host: true → écoute sur 0.0.0.0 : accessible depuis les téléphones du
+    // jury sur le réseau WiFi local (http://<IP-du-PC>:5173).
+    host: true,
+    port: 5173,
+  },
 })

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
+import { WS_URL as WS_BASE } from '../config'
 
-const WS_URL = `${import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000'}/api/telemetry/ws/telemetry`
+const WS_URL = `${WS_BASE}/api/telemetry/ws/telemetry`
 const MAX_LIVE_POINTS = 30
 
 export const useTelemetryStore = create((set, get) => ({

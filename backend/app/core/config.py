@@ -5,6 +5,12 @@ class Settings(BaseSettings):
     
     # CORS — Restreindre en production
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    # Regex CORS — autorise localhost ET tout le réseau local privé (10.x,
+    # 172.16-31.x, 192.168.x) sur n'importe quel port. Indispensable pour la
+    # démo multi-appareils : les téléphones du jury chargent le dashboard
+    # depuis http://<IP-du-PC>:5173 → Origin non-localhost à autoriser.
+    ALLOWED_ORIGIN_REGEX: str = r"http://(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?"
     
     # Mode opérationnel
     SIMULATION_MODE: bool = True

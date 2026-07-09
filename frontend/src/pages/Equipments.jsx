@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import { Power, AlertOctagon, CheckCircle, ShieldAlert } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTelemetryStore } from "../store/useTelemetryStore";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+import { API_URL } from "../config";
 
 // Plage de sécurité de la barrière de tension (identique au backend)
 const VOLTAGE_MIN = 180;
